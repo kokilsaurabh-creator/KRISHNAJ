@@ -31,7 +31,7 @@ from app.config import get_settings
 from app.core.security import create_access_token
 from app.db import get_session, make_engine
 from app.main import app
-from app.models import Base, Party, PartyType, User, UserRole
+from app.models import Base, Party, PartyType, Product, User, UserRole
 
 
 def _test_db_url() -> str:
@@ -138,6 +138,15 @@ async def party(session: AsyncSession) -> Party:
 @pytest_asyncio.fixture
 async def supplier(session: AsyncSession) -> Party:
     p = Party(party_type=PartyType.supplier, name="Meenakshi Findings Co")
+    session.add(p)
+    await session.commit()
+    await session.refresh(p)
+    return p
+
+
+@pytest_asyncio.fixture
+async def product(session: AsyncSession) -> Product:
+    p = Product(code="BNG-001", name="Gold Plated Bangle", default_rate=None)
     session.add(p)
     await session.commit()
     await session.refresh(p)

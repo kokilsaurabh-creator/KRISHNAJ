@@ -26,7 +26,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 from app.models.enums import DocStatus, LedgerTxnType, PartyType, PaymentDirection, UserRole
@@ -139,7 +139,13 @@ class Sale(Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancel_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    lines: Mapped[list["SaleLine"]] = relationship(
+        back_populates="sale", order_by="SaleLine.line_no", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (Index("idx_sales_party_date", "party_id", "invoice_date"),)
 
@@ -155,6 +161,8 @@ class SaleLine(Base):
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
     rate: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+
+    sale: Mapped["Sale"] = relationship(back_populates="lines")
 
     __table_args__ = (
         UniqueConstraint("sale_id", "line_no"),
