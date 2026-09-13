@@ -8,6 +8,11 @@ pydantic>=2.7,<3.0
 pydantic-settings>=2.3,<3.0
 python-jose[cryptography]>=3.3,<4.0
 passlib[bcrypt]>=1.7.4,<2.0
+# passlib 1.7.4 (last release: 2020, unmaintained) probes bcrypt's internals
+# at import time in a way that raises on bcrypt>=4.1 (AttributeError: module
+# 'bcrypt' has no attribute '__about__'), which then fails every hash/verify
+# call. Pin below that until passlib cuts a release that knows about it.
+bcrypt>=4.0,<4.1
 python-multipart>=0.0.9
 python-dotenv>=1.0
 
