@@ -192,7 +192,13 @@ class Purchase(Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancel_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    lines: Mapped[list["PurchaseLine"]] = relationship(
+        back_populates="purchase", order_by="PurchaseLine.line_no", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         UniqueConstraint("party_id", "bill_no"),
@@ -211,6 +217,8 @@ class PurchaseLine(Base):
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3), nullable=False)
     rate: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+
+    purchase: Mapped["Purchase"] = relationship(back_populates="lines")
 
     __table_args__ = (
         UniqueConstraint("purchase_id", "line_no"),
