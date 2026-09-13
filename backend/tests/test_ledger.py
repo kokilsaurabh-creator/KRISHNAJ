@@ -18,7 +18,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from app.models import DocStatus, LedgerEntry, LedgerTxnType, PartyType, PaymentDirection
+from app.models import DocStatus, LedgerEntry, LedgerTxnType, Party, PartyType, PaymentDirection
 from app.services import ledger
 from tests.helpers import create_payment, create_purchase, create_sale
 
@@ -236,10 +236,51 @@ async def test_get_outstanding_includes_both_typed_parties_in_customer_report(se
     )
 
     customer_report = await ledger.get_outstanding(session, PartyType.customer, date(2026, 12, 31))
-    by_id = {row.party_id: row for row in customer_report}
+    by_id = {row.party_id: row for row in customer_report.rows}
     assert by_id[party.id].balance == Decimal("1200.00")
     assert supplier.id not in by_id
+    assert customer_report.receivable_total == Decimal("1200.00")
+    assert customer_report.payable_total == Decimal("0.00")
 
     supplier_report = await ledger.get_outstanding(session, PartyType.supplier, date(2026, 12, 31))
-    by_id = {row.party_id: row for row in supplier_report}
+    by_id = {row.party_id: row for row in supplier_report.rows}
     assert by_id[supplier.id].balance == Decimal("-800.00")
+    assert supplier_report.payable_total == Decimal("800.00")
+    assert supplier_report.receivable_total == Decimal("0.00")
+
+
+@pytest.mark.asyncio
+async def test_both_typed_party_in_credit_shows_as_row_but_not_in_receivable_total(session, owner_user):
+    """A 'both' party appears on the customer report (rows are driven by
+    party_type inclusion, not by which way the balance currently leans).
+    But if that party is in credit — you owe THEM, e.g. they paid in
+    advance — that balance must not inflate the receivable_total header
+    figure. It still counts toward payable_total, same as any payable."""
+    both_party = Party(party_type=PartyType.both, name="Ganesh Traders")
+    session.add(both_party)
+    await session.commit()
+    await session.refresh(both_party)
+
+    # A credit balance with no sale involved: a straight receipt with no
+    # corresponding invoice yet, i.e. an advance from this party.
+    await ledger.post_to_ledger(
+        session,
+        party_id=both_party.id,
+        txn_date=date(2026, 4, 5),
+        txn_type=LedgerTxnType.receipt,
+        source_table="payments",
+        source_id=9001,
+        doc_no="RCP/9001",
+        debit=Decimal("0"),
+        credit=Decimal("600.00"),
+        narration="advance received",
+    )
+    await session.commit()
+
+    customer_report = await ledger.get_outstanding(session, PartyType.customer, date(2026, 12, 31))
+    by_id = {row.party_id: row for row in customer_report.rows}
+
+    assert both_party.id in by_id
+    assert by_id[both_party.id].balance == Decimal("-600.00")
+    assert customer_report.receivable_total == Decimal("0.00")
+    assert customer_report.payable_total == Decimal("600.00")

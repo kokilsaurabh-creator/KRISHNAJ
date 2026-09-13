@@ -94,6 +94,15 @@ class OutstandingRow:
     balance: Decimal
 
 
+@dataclass(frozen=True)
+class OutstandingReport:
+    party_type: PartyType | None
+    as_on_date: date
+    rows: list[OutstandingRow]
+    receivable_total: Decimal
+    payable_total: Decimal
+
+
 async def post_to_ledger(
     session: AsyncSession,
     *,
@@ -206,6 +215,60 @@ async def remove_for_source(session: AsyncSession, *, source_table: str, source_
     return result.rowcount or 0
 
 
+async def set_opening_balance(
+    session: AsyncSession,
+    *,
+    party_id: int,
+    as_of_date: date,
+    amount: Decimal,
+    narration: str | None = None,
+) -> LedgerEntry | None:
+    """Set (or replace) a party's opening balance.
+
+    Idempotent, per the spec: re-posting replaces the existing opening row
+    for this party rather than adding a second one. Opening rows have no
+    source_table/source_id (that's what makes them 'opening' rather than
+    document-backed), so they aren't covered by the idempotency guarantee the
+    partial unique index gives every other txn_type — this function is
+    where that same guarantee gets enforced for opening balances specifically,
+    keyed on (party_id, txn_type='opening') instead.
+
+    amount follows the same sign convention as everywhere else: positive =
+    they owe us (debit), negative = we owe them (credit). amount=0 clears
+    the opening balance (deletes the row, returns None) rather than posting
+    a meaningless zero row.
+    """
+    amount = _money(amount, field_name="amount")
+
+    existing = await session.execute(
+        select(LedgerEntry.id).where(
+            LedgerEntry.party_id == party_id,
+            LedgerEntry.txn_type == LedgerTxnType.opening,
+            LedgerEntry.source_table.is_(None),
+        )
+    )
+    existing_id = existing.scalar_one_or_none()
+    if existing_id is not None:
+        await session.execute(delete(LedgerEntry).where(LedgerEntry.id == existing_id))
+        await session.flush()
+
+    if amount == 0:
+        return None
+
+    return await post_to_ledger(
+        session,
+        party_id=party_id,
+        txn_date=as_of_date,
+        txn_type=LedgerTxnType.opening,
+        source_table=None,
+        source_id=None,
+        doc_no=None,
+        debit=amount if amount > 0 else Decimal("0"),
+        credit=-amount if amount < 0 else Decimal("0"),
+        narration=narration,
+    )
+
+
 async def get_ledger(
     session: AsyncSession,
     party_id: int,
@@ -277,15 +340,24 @@ async def get_outstanding(
     session: AsyncSession,
     party_type: PartyType | None,
     as_on_date: date,
-) -> list[OutstandingRow]:
+) -> OutstandingReport:
     """Closing balance for every active party as on a date, most useful for
-    the /reports/outstanding screen.
+    the /reports/outstanding screen (and, later, /dashboard/summary — this
+    is the same computation, just call it with party_type=None).
 
-    party_type=None returns all active parties. party_type='customer' or
-    'supplier' also includes parties typed 'both', since a 'both' party can
-    carry a balance on either side and should show up on both reports. See
-    the review write-up for why this reading was chosen over an exact type
-    match — flag it if you want exact-match instead.
+    Row inclusion vs. header totals are deliberately different rules:
+
+    - Rows: party_type='customer' or 'supplier' also includes parties typed
+      'both', since a 'both' party can carry a balance on either side and
+      should be visible on both reports regardless of which way it
+      currently leans.
+    - Totals: receivable_total sums only the positive-balance rows;
+      payable_total sums only the negative-balance rows (as a positive
+      amount). A row whose balance sign is the "wrong" way for the report
+      it's on (e.g. a customer who's in credit) still appears in `rows` —
+      the frontend labels that one "Advance" — but contributes zero to
+      either total, so the header figures stay meaningful summaries rather
+      than being dragged around by exceptions.
     """
     balance_expr = func.coalesce(func.sum(LedgerEntry.debit - LedgerEntry.credit), 0).label("balance")
 
@@ -308,7 +380,7 @@ async def get_outstanding(
 
     result = await session.execute(stmt)
 
-    return [
+    rows = [
         OutstandingRow(
             party_id=row.id,
             party_name=row.name,
@@ -317,3 +389,14 @@ async def get_outstanding(
         )
         for row in result.all()
     ]
+
+    receivable_total = sum((r.balance for r in rows if r.balance > 0), Decimal("0.00"))
+    payable_total = sum((-r.balance for r in rows if r.balance < 0), Decimal("0.00"))
+
+    return OutstandingReport(
+        party_type=party_type,
+        as_on_date=as_on_date,
+        rows=rows,
+        receivable_total=receivable_total,
+        payable_total=payable_total,
+    )
