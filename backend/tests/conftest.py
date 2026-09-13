@@ -12,20 +12,27 @@ ledger.py, not the migration file byte-for-byte — run `alembic upgrade
 head` against a scratch database at least once to sanity-check the
 migration itself.
 
-The schema is (re)created once in pytest_configure, using its own throwaway
-event loop via asyncio.run(), *before* pytest-asyncio's per-test event loop
-exists. Every fixture below is function-scoped on top of that, which sidesteps
-pytest-asyncio's event-loop-scope-mismatch footguns entirely instead of
-juggling session-scoped async fixtures.
+Speed: `engine` is session-scoped — one connection pool for the whole run,
+built once. Each test gets its own connection from that pool wrapped in an
+outer transaction; the ORM session is bound to that connection with
+join_transaction_mode="create_savepoint", so every session.commit() the
+test (or the route code it calls) makes only commits a SAVEPOINT — the
+outer transaction, and everything nested in it, gets rolled back in the
+`session` fixture's teardown. That's what makes tests both fast (no
+reconnecting, no per-test schema churn) and isolated from each other,
+without needing to truncate tables between tests.
+
+One test — concurrent doc numbering — deliberately doesn't use the
+`session` fixture, because it needs two independent connections that can
+actually block each other at the database level. See its own docstring.
 """
 
-import asyncio
 from collections.abc import AsyncIterator
 
 import httpx
 import pytest_asyncio
 from httpx import ASGITransport
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.config import get_settings
 from app.core.security import create_access_token
@@ -39,36 +46,26 @@ def _test_db_url() -> str:
     return settings.test_database_url or settings.database_url
 
 
-def pytest_configure(config) -> None:
-    async def _setup() -> None:
-        eng = make_engine(_test_db_url())
-        async with eng.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
-            await conn.run_sync(Base.metadata.create_all)
-        await eng.dispose()
-
-    asyncio.run(_setup())
-
-
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="session")
 async def engine() -> AsyncIterator[AsyncEngine]:
     eng = make_engine(_test_db_url())
+    async with eng.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
     yield eng
     await eng.dispose()
 
 
 @pytest_asyncio.fixture
 async def session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with session_factory() as s:
-        yield s
-        await s.rollback()
-
-    # Isolate tests from each other: wipe every table, children before
-    # parents so FKs don't block the delete.
-    async with engine.begin() as conn:
-        for table in reversed(Base.metadata.sorted_tables):
-            await conn.execute(table.delete())
+    async with engine.connect() as conn:
+        await conn.begin()
+        async_session = AsyncSession(bind=conn, expire_on_commit=False, join_transaction_mode="create_savepoint")
+        try:
+            yield async_session
+        finally:
+            await async_session.close()
+            await conn.rollback()
 
 
 @pytest_asyncio.fixture

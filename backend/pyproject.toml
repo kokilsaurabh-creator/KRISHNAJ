@@ -1,5 +1,11 @@
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
+# One event loop for the whole run: the `engine` fixture is session-scoped
+# (one connection pool, created once) and tests share it, so both fixtures
+# and tests need to run on the same loop or asyncpg connections end up
+# bound to a loop that's already gone.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 
 [tool.ruff]
