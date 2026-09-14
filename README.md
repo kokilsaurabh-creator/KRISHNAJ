@@ -86,9 +86,24 @@ pytest
 ```bash
 cd frontend
 npm install
-copy .env.example .env
 npm run dev
 ```
 
-Still just a placeholder screen — screens land once purchases, payments,
-and the ledger view are built.
+Then open http://localhost:5173 with the backend running on port 8000
+(`VITE_API_URL` overrides that if needed).
+
+Run it from **inside** `frontend/` — Tailwind resolves its `content` globs
+relative to the working directory, so starting Vite from the repo root
+silently purges every utility class and the app renders unstyled.
+
+Built so far: login, app shell (teal top bar, mobile bottom tabs), and the
+ledger screen with client-side PDF export. Sales, purchase and payment
+screens are still placeholders.
+
+### Theme
+
+The palette lives in `tailwind.config.ts` as tokens — `teal`, `teal-wash`,
+`peacock`, `gold`, `danger`. Components reference those names; no raw hex
+belongs in a component. Red (`danger`) is reserved for cancelled documents
+and payable amounts, and amounts use `tabular-nums` so ledger columns line
+up.
