@@ -210,6 +210,28 @@ export type Payment = {
   status: DocStatus;
 };
 
+export type ActivityType = "sale" | "purchase" | "payment";
+
+export type ActivityItem = {
+  type: ActivityType;
+  id: number;
+  doc_no: string;
+  party_id: number;
+  party_name: string;
+  amount: string;
+  txn_date: string;
+  status: DocStatus;
+  created_at: string;
+};
+
+export type DashboardSummary = {
+  as_on_date: string;
+  receivable_total: string;
+  payable_total: string;
+  month_sales_total: string;
+  recent_activity: ActivityItem[];
+};
+
 export const PAYMENT_MODES = ["Cash", "UPI", "Bank", "Cheque"] as const;
 
 export const TXN_TYPE_LABELS: Record<LedgerTxnType, string> = {

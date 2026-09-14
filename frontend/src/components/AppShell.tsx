@@ -7,6 +7,7 @@ import InstallPrompt from "./InstallPrompt";
 
 const TABS = [
   { to: "/", label: "Home", end: true },
+  { to: "/dashboard", label: "Dashboard", end: false },
   { to: "/parties", label: "Parties", end: false },
   { to: "/products", label: "Products", end: false },
   { to: "/sales", label: "Sales", end: false },
