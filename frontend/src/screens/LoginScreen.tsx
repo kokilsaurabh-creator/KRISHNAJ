@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 
 import { useAuth } from "../auth/AuthContext";
+import { FullLogo } from "../components/Logo";
 import { ApiError } from "../lib/api";
 
 export default function LoginScreen() {
@@ -25,12 +26,11 @@ export default function LoginScreen() {
 
   return (
     <div className="flex min-h-full flex-col bg-white">
-      <header className="bg-teal px-5 py-6 text-white">
-        <h1 className="text-xl font-semibold">Krishna Jewellers</h1>
-        <p className="mt-1 text-sm text-white/80">Sign in to continue</p>
-      </header>
-
-      <main className="mx-auto w-full max-w-sm flex-1 px-5 py-8">
+      <main className="mx-auto w-full max-w-sm flex-1 px-5 py-10">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <FullLogo className="h-20 w-auto" />
+          <p className="mt-3 text-sm text-neutral-600">Sign in to continue</p>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label htmlFor="username" className="mb-1.5 block text-sm font-medium text-neutral-700">

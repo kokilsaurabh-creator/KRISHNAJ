@@ -20,6 +20,7 @@
     "@types/pdfmake": "^0.2.9",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vite-pwa/assets-generator": "^0.2.6",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.39",
@@ -27,5 +28,8 @@
     "typescript": "^5.5.3",
     "vite": "^5.4.0",
     "vite-plugin-pwa": "^0.20.1"
+  },
+  "overrides": {
+    "sharp": "^0.33.5"
   }
 }

@@ -1,6 +1,12 @@
+import logoFullRaw from "../assets/krishna-jewellers-logo-full.svg?raw";
 import { TXN_TYPE_LABELS, type Ledger } from "./api";
 import { formatDisplayDate } from "./dates";
 import { absoluteAmount, balanceMarker, formatAmount, formatBalance } from "./money";
+
+/** The source files carry a large C2PA provenance block that the PDF's SVG
+ * renderer has no use for — and choking on it would take the whole export
+ * down, so it's removed before embedding. */
+const LOGO_SVG = logoFullRaw.replace(/<metadata>[\s\S]*?<\/metadata>/, "");
 
 /**
  * pdfmake plus its embedded Roboto set is ~2.5 MB — most of the app's
@@ -149,8 +155,8 @@ export function buildLedgerDocDefinition(ledger: Ledger) {
     pageMargins: [32, 32, 32, 44] as [number, number, number, number],
     defaultStyle: { font: "Roboto", fontSize: 10, color: "#000000" },
     content: [
-      { text: "Krishna Jewellers", fontSize: 16, bold: true },
-      { text: "Party ledger", fontSize: 11, margin: [0, 2, 0, 10] as [number, number, number, number] },
+      { svg: LOGO_SVG, width: 168 },
+      { text: "Party ledger", fontSize: 11, margin: [0, 6, 0, 10] as [number, number, number, number] },
 
       {
         table: {

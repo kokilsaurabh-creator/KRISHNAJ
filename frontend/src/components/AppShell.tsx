@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext";
+import { AppBarLogo } from "./Logo";
 
 const TABS = [
   { to: "/", label: "Home", end: true },
@@ -17,8 +18,8 @@ export default function AppShell() {
     <div className="flex min-h-full flex-col bg-white">
       <header className="sticky top-0 z-20 bg-teal text-white">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-3">
-          <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold sm:text-lg">Krishna Jewellers</h1>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <AppBarLogo />
             {user && (
               <p className="truncate text-xs text-white/75">
                 {user.display_name} · {user.role === "owner" ? "Owner" : user.role === "admin" ? "Admin" : "Staff"}
