@@ -24,3 +24,6 @@ frontend/.env.local
 
 # Local Claude Code tooling state
 .claude/
+
+.vercel
+.env*

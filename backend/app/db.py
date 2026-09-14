@@ -71,20 +71,24 @@ def make_engine(database_url: str):
         url,
         echo=settings.sql_echo,
         connect_args=connect_args,
-        # Sized for serverless, not for a long-running server: this engine
-        # is one of potentially many independent instances (one per Vercel
-        # function container), each importing this module exactly once at
-        # cold start and reusing the resulting pool across every warm
-        # invocation that container handles. SQLAlchemy's own defaults
-        # (pool_size=5, max_overflow=10) assume ONE process serving all
-        # traffic — under serverless that same default multiplied across
-        # N concurrently-scaled containers is how you exhaust Neon's
-        # connection limit under a burst. A small pool per container is
-        # fine because Neon's pooler endpoint (the "-pooler" in the
-        # hostname) is itself already multiplexing these down to a much
-        # smaller number of real backend connections.
-        pool_size=1,
-        max_overflow=2,
+        # Deployed as a Vercel Service, which runs on Fluid compute: unlike
+        # classic one-request-per-container serverless, a single warm
+        # instance handles MULTIPLE CONCURRENT requests in-process, sharing
+        # this module-level pool across all of them — this is not "N
+        # containers each holding their own tiny pool," it's "one process,
+        # real concurrency, needs a pool sized for that concurrency." A
+        # pool_size=1 here would queue every concurrent request behind
+        # whichever one currently holds the single connection. Sized at 5+5
+        # as a reasonable middle ground: enough headroom for realistic
+        # in-instance concurrency without SQLAlchemy's plain defaults (5+10)
+        # times however many instances Fluid decides to run. Fluid's whole
+        # pitch is needing *fewer* instances for the same load than classic
+        # serverless would, which is what keeps this from re-creating the
+        # "many independent pools" connection-exhaustion risk — and Neon's
+        # pooler endpoint (the "-pooler" in the hostname) is still there as
+        # a backstop regardless.
+        pool_size=5,
+        max_overflow=5,
         # A container can be frozen between invocations; the TCP socket can
         # die during that freeze even though the process (and this pool)
         # survives. pre_ping validates a connection with a cheap round trip
