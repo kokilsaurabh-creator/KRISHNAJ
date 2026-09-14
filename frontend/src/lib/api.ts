@@ -64,6 +64,13 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  patchJson: <T>(path: string, body: unknown) =>
+    request<T>(path, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
   /** /auth/login takes OAuth2 form encoding, not JSON. */
   postForm: <T>(path: string, fields: Record<string, string>) =>
     request<T>(path, {

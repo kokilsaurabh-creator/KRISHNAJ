@@ -5,7 +5,9 @@ import AppShell from "./components/AppShell";
 import HomeScreen from "./screens/HomeScreen";
 import LedgerScreen from "./screens/LedgerScreen";
 import LoginScreen from "./screens/LoginScreen";
+import PartiesScreen from "./screens/PartiesScreen";
 import PaymentEntryScreen from "./screens/PaymentEntryScreen";
+import ProductsScreen from "./screens/ProductsScreen";
 import PurchaseEntryScreen from "./screens/PurchaseEntryScreen";
 import SalesEntryScreen from "./screens/SalesEntryScreen";
 
@@ -32,6 +34,8 @@ export default function App() {
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<HomeScreen />} />
+        <Route path="parties" element={<PartiesScreen />} />
+        <Route path="products" element={<ProductsScreen />} />
         <Route path="sales" element={<SalesEntryScreen />} />
         <Route path="purchases" element={<PurchaseEntryScreen />} />
         <Route path="payments" element={<PaymentEntryScreen />} />
