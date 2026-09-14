@@ -7,8 +7,12 @@ Monorepo: `/backend` (FastAPI + SQLAlchemy 2.0 async + Alembic) and
 Built so far: schema migration, the ledger service
 (`backend/app/services/ledger.py`), document numbering with row-level
 locking (`backend/app/services/doc_numbering.py`), auth (JWT + role
-checks), parties/products CRUD, and sales (create/edit/cancel) — the first
-real consumer of the ledger service. Purchases and payments are next.
+checks), parties/products CRUD, sales/purchases/payments
+(create/edit/cancel), the ledger read endpoint + screen with client-side
+PDF export, and entry screens for all three document types. Attachments
+and the dashboard are next.
+
+Deploys as a single Vercel project — see **Deployment** below.
 
 ## Backend setup
 
@@ -96,10 +100,6 @@ Run it from **inside** `frontend/` — Tailwind resolves its `content` globs
 relative to the working directory, so starting Vite from the repo root
 silently purges every utility class and the app renders unstyled.
 
-Built so far: login, app shell (teal top bar, mobile bottom tabs), and the
-ledger screen with client-side PDF export. Sales, purchase and payment
-screens are still placeholders.
-
 ### Theme
 
 The palette lives in `tailwind.config.ts` as tokens — `teal`, `teal-wash`,
@@ -107,3 +107,63 @@ The palette lives in `tailwind.config.ts` as tokens — `teal`, `teal-wash`,
 belongs in a component. Red (`danger`) is reserved for cancelled documents
 and payable amounts, and amounts use `tabular-nums` so ledger columns line
 up.
+
+## Deployment
+
+One Vercel project serves both halves — no separate backend host:
+
+```
+/                       <- vercel.json: build + routing for both sides
+/api/index.py           <- serverless entrypoint: mounts backend's FastAPI
+                            app under /api, unmodified
+/api/requirements.txt   <- runtime-only deps (no uvicorn/alembic/pytest —
+                            those don't belong in a cold start)
+/frontend                <- built as static output (frontend/dist)
+/backend/app              <- the actual FastAPI app; bundled into the
+                            function via vercel.json's includeFiles, never
+                            itself aware it's running under Vercel
+```
+
+**Vercel project settings:**
+- **Root Directory:** the repo root (not `/frontend` — the project now
+  needs to see `/api` and `/backend` alongside it, so `vercel.json` must be
+  visible at the root Vercel checks out).
+- **Framework Preset:** Other (the committed `vercel.json` drives the
+  build/output/routing directly; no preset needed).
+
+**Environment variables to set in the Vercel dashboard:**
+
+| Variable | Value | Notes |
+|---|---|---|
+| `VITE_API_URL` | `/api` | Relative, not a URL — frontend and API are same-origin under one Vercel domain. Build-time: Vite inlines it, so it must be set before the build runs, not added after. |
+| `DATABASE_URL` | your Neon connection string, with `?sslmode=require&channel_binding=require` | Same value as `backend/.env`, entered directly in Vercel — never committed. |
+| `JWT_SECRET` | a long random string | Also never committed. Generate with e.g. `openssl rand -base64 48`. |
+
+Not needed in Vercel: `CORS_ORIGINS` (same-origin in this setup, see
+`app/config.py`), `TEST_DATABASE_URL` and the `SEED_*` vars (local-only,
+used for the pytest suite and for running `python -m app.seed` by hand —
+neither runs as part of a deploy).
+
+**Serverless connection handling** (`backend/app/db.py`): each Vercel
+function container imports the app once at cold start and reuses that
+same connection pool across every warm invocation it handles — this is
+the correct, intended pattern, not something to work around. Two things
+tuned specifically for it: `pool_size=1, max_overflow=2` (many containers
+can exist at once, each with its own pool — SQLAlchemy's default of 5+10
+multiplied across a burst of them is how you exhaust Neon's connection
+limit; Neon's own pooler, already in the connection string via
+`-pooler` in the hostname, absorbs the rest), and `statement_cache_size=0`
+in `connect_args` (asyncpg caches prepared statements per connection,
+which is incompatible with PgBouncer transaction-mode pooling under real
+concurrency — a documented asyncpg/PgBouncer issue, not specific to this
+app). `pool_pre_ping=True` handles a connection dying while its container
+sits frozen between invocations.
+
+**Seeding production** is a manual step, run from your own machine — it
+is never part of a deploy:
+
+```powershell
+cd backend
+# DATABASE_URL in .env must point at Neon, not local Postgres
+.\.venv\Scripts\python.exe -m app.seed
+```

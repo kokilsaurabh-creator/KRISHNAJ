@@ -1,0 +1,22 @@
+# Vercel's Python runtime looks for requirements.txt beside the function
+# entrypoint (api/index.py). This is deliberately NOT the same file as
+# backend/requirements.txt — it's the runtime-only subset:
+#   - no uvicorn: Vercel's runtime IS the ASGI server, we never run our own
+#   - no alembic: a migration CLI you run by hand, never imported by
+#     anything request-serving (app.main never touches it)
+#   - no pytest/pytest-asyncio/httpx: test-only, and pulling them into every
+#     cold start would only make cold starts slower for nothing
+# Keep this in sync with backend/requirements.txt's runtime deps by hand —
+# there are few enough of them that a shared file would be more machinery
+# than the duplication it'd save.
+fastapi>=0.115,<1.0
+sqlalchemy>=2.0.30,<3.0
+asyncpg>=0.29,<1.0
+certifi>=2024.0.0
+pydantic>=2.7,<3.0
+pydantic-settings>=2.3,<3.0
+python-jose[cryptography]>=3.3,<4.0
+passlib[bcrypt]>=1.7.4,<2.0
+bcrypt>=4.0,<4.1
+python-multipart>=0.0.9
+python-dotenv>=1.0

@@ -40,7 +40,19 @@ def to_asyncpg_url(raw_url: str) -> tuple[str, dict]:
     new_query = urlencode(query_pairs)
     normalised = urlunsplit((scheme, parts.netloc, parts.path, new_query, parts.fragment))
 
-    connect_args: dict = {}
+    connect_args: dict = {
+        # Neon's connection string points at its "-pooler" endpoint, which
+        # routes through PgBouncer in transaction-pooling mode: a different
+        # physical Postgres connection can back each transaction. asyncpg's
+        # default behaviour is to PREPARE and cache statements per
+        # connection, which under that kind of pooling produces intermittent
+        # "prepared statement does not exist" errors once traffic is
+        # concurrent enough to actually rotate connections — this is a
+        # documented asyncpg/PgBouncer incompatibility, not specific to us.
+        # Disabling asyncpg's statement cache is the standard fix and costs
+        # nothing meaningful at our query volume.
+        "statement_cache_size": 0,
+    }
     if sslmode in ("require", "verify-ca", "verify-full"):
         # Plain ssl=True hands asyncpg ssl.create_default_context(), which on
         # some Windows setups can't complete the chain from the OS trust
@@ -55,7 +67,32 @@ def to_asyncpg_url(raw_url: str) -> tuple[str, dict]:
 def make_engine(database_url: str):
     url, connect_args = to_asyncpg_url(database_url)
     settings = get_settings()
-    return create_async_engine(url, echo=settings.sql_echo, connect_args=connect_args)
+    return create_async_engine(
+        url,
+        echo=settings.sql_echo,
+        connect_args=connect_args,
+        # Sized for serverless, not for a long-running server: this engine
+        # is one of potentially many independent instances (one per Vercel
+        # function container), each importing this module exactly once at
+        # cold start and reusing the resulting pool across every warm
+        # invocation that container handles. SQLAlchemy's own defaults
+        # (pool_size=5, max_overflow=10) assume ONE process serving all
+        # traffic — under serverless that same default multiplied across
+        # N concurrently-scaled containers is how you exhaust Neon's
+        # connection limit under a burst. A small pool per container is
+        # fine because Neon's pooler endpoint (the "-pooler" in the
+        # hostname) is itself already multiplexing these down to a much
+        # smaller number of real backend connections.
+        pool_size=1,
+        max_overflow=2,
+        # A container can be frozen between invocations; the TCP socket can
+        # die during that freeze even though the process (and this pool)
+        # survives. pre_ping validates a connection with a cheap round trip
+        # before handing it out, transparently reconnecting if it's dead,
+        # rather than surfacing a broken-connection error on the request
+        # that happens to draw the stale one.
+        pool_pre_ping=True,
+    )
 
 
 _settings = get_settings()

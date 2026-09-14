@@ -1,4 +1,5 @@
-"""Idempotent seeding of the 3 fixed accounts from env vars.
+"""Idempotent seeding of the 3 fixed accounts, read from Settings (.env or
+real environment variables — same source as DATABASE_URL).
 
 Run with: python -m app.seed
 
@@ -9,28 +10,29 @@ PATCH /users/{id}, not this script.
 """
 
 import asyncio
-import os
 
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.core.security import hash_password
 from app.db import SessionLocal
 from app.models import User, UserRole
 
-_SEED_ACCOUNTS = [
-    ("SEED_ADMIN_USERNAME", "SEED_ADMIN_PASSWORD", UserRole.admin, "Admin"),
-    ("SEED_SURESH_USERNAME", "SEED_SURESH_PASSWORD", UserRole.owner, "Suresh"),
-    ("SEED_NEENA_USERNAME", "SEED_NEENA_PASSWORD", UserRole.staff, "Neena"),
-]
+
+def _seed_accounts() -> list[tuple[str | None, str | None, UserRole, str]]:
+    settings = get_settings()
+    return [
+        (settings.seed_admin_username, settings.seed_admin_password, UserRole.admin, "Admin"),
+        (settings.seed_suresh_username, settings.seed_suresh_password, UserRole.owner, "Suresh"),
+        (settings.seed_neena_username, settings.seed_neena_password, UserRole.staff, "Neena"),
+    ]
 
 
 async def seed() -> None:
     async with SessionLocal() as session:
-        for username_var, password_var, role, display_name in _SEED_ACCOUNTS:
-            username = os.environ.get(username_var)
-            password = os.environ.get(password_var)
+        for username, password, role, display_name in _seed_accounts():
             if not username or not password:
-                print(f"skipping {username_var}: {username_var}/{password_var} not set")
+                print(f"skipping {display_name}: username/password not set")
                 continue
 
             existing = await session.execute(select(User.id).where(User.username == username))
