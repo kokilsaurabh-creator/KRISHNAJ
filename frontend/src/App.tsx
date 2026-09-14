@@ -2,7 +2,6 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { useAuth } from "./auth/AuthContext";
 import AppShell from "./components/AppShell";
-import DashboardScreen from "./screens/DashboardScreen";
 import HomeScreen from "./screens/HomeScreen";
 import LedgerScreen from "./screens/LedgerScreen";
 import LoginScreen from "./screens/LoginScreen";
@@ -35,7 +34,8 @@ export default function App() {
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<HomeScreen />} />
-        <Route path="dashboard" element={<DashboardScreen />} />
+        {/* Dashboard was merged into Home — keep old links working. */}
+        <Route path="dashboard" element={<Navigate to="/" replace />} />
         <Route path="parties" element={<PartiesScreen />} />
         <Route path="products" element={<ProductsScreen />} />
         <Route path="sales" element={<SalesEntryScreen />} />

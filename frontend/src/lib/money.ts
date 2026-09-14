@@ -22,6 +22,16 @@ export function formatCurrency(value: string | number): string {
   return `₹${formatAmount(value)}`;
 }
 
+const inrWhole = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
+
+/** Like formatCurrency, but drops the paise on a whole amount:
+ * "8550.00" -> "₹8,550", "1404.50" -> "₹1,404.50". For headline figures,
+ * where a row of trailing zeros is noise. Ledger columns keep the paise. */
+export function formatCurrencyTrim(value: string | number): string {
+  const n = typeof value === "string" ? Number(value) : value;
+  return Number.isInteger(n) ? `₹${inrWhole.format(n)}` : formatCurrency(n);
+}
+
 export function isNegative(value: string): boolean {
   return value.trim().startsWith("-");
 }
