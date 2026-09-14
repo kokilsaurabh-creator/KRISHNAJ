@@ -18,19 +18,23 @@ export default function HomeScreen() {
         </p>
       </div>
 
-      <Link
-        to="/ledger"
-        className="block rounded-xl border border-neutral-200 p-4 transition hover:border-teal hover:bg-teal-wash/40"
-      >
-        <p className="font-medium text-neutral-900">Ledger</p>
-        <p className="mt-0.5 text-sm text-neutral-600">
-          Statement of account for a party, with PDF export.
-        </p>
-      </Link>
-
-      <p className="rounded-xl border border-dashed border-neutral-300 px-4 py-6 text-center text-sm text-neutral-500">
-        Sales, purchase and payment screens are next. The ledger is live now.
-      </p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {[
+          { to: "/sales", title: "New sale", body: "Invoice a customer. The number is allocated on save." },
+          { to: "/purchases", title: "New purchase", body: "Record a supplier's bill against their own number." },
+          { to: "/payments", title: "New payment", body: "Money received from, or paid to, a party." },
+          { to: "/ledger", title: "Ledger", body: "Statement of account for a party, with PDF export." },
+        ].map((card) => (
+          <Link
+            key={card.to}
+            to={card.to}
+            className="block rounded-xl border border-neutral-200 p-4 transition hover:border-teal hover:bg-teal-wash/40"
+          >
+            <p className="font-medium text-neutral-900">{card.title}</p>
+            <p className="mt-0.5 text-sm text-neutral-600">{card.body}</p>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

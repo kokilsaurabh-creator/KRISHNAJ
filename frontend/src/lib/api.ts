@@ -131,6 +131,80 @@ export type Ledger = {
   closing: string;
 };
 
+export type Product = {
+  id: number;
+  code: string;
+  name: string;
+  category: string | null;
+  uom: string;
+  default_rate: string | null;
+  notes: string | null;
+  is_active: boolean;
+};
+
+export type DocStatus = "active" | "cancelled";
+
+export type SaleLine = {
+  line_no: number;
+  product_id: number;
+  description: string | null;
+  quantity: string;
+  rate: string;
+  amount: string;
+};
+
+export type Sale = {
+  id: number;
+  invoice_no: string;
+  invoice_date: string;
+  party_id: number;
+  gross_amount: string;
+  discount: string;
+  net_amount: string;
+  narration: string | null;
+  status: DocStatus;
+  lines: SaleLine[];
+};
+
+export type PurchaseLine = {
+  line_no: number;
+  item_description: string;
+  uom: string;
+  quantity: string;
+  rate: string;
+  amount: string;
+};
+
+export type Purchase = {
+  id: number;
+  bill_no: string;
+  bill_date: string;
+  party_id: number;
+  gross_amount: string;
+  discount: string;
+  net_amount: string;
+  narration: string | null;
+  status: DocStatus;
+  lines: PurchaseLine[];
+};
+
+export type PaymentDirection = "in" | "out";
+
+export type Payment = {
+  id: number;
+  voucher_no: string;
+  payment_date: string;
+  party_id: number;
+  direction: PaymentDirection;
+  amount: string;
+  mode: string;
+  reference_no: string | null;
+  narration: string | null;
+  status: DocStatus;
+};
+
+export const PAYMENT_MODES = ["Cash", "UPI", "Bank", "Cheque"] as const;
+
 export const TXN_TYPE_LABELS: Record<LedgerTxnType, string> = {
   opening: "Opening balance",
   sale: "Sale",

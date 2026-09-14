@@ -2,10 +2,12 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { useAuth } from "./auth/AuthContext";
 import AppShell from "./components/AppShell";
-import ComingSoonScreen from "./screens/ComingSoonScreen";
 import HomeScreen from "./screens/HomeScreen";
 import LedgerScreen from "./screens/LedgerScreen";
 import LoginScreen from "./screens/LoginScreen";
+import PaymentEntryScreen from "./screens/PaymentEntryScreen";
+import PurchaseEntryScreen from "./screens/PurchaseEntryScreen";
+import SalesEntryScreen from "./screens/SalesEntryScreen";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -30,9 +32,9 @@ export default function App() {
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<HomeScreen />} />
-        <Route path="sales" element={<ComingSoonScreen title="Sales" />} />
-        <Route path="purchases" element={<ComingSoonScreen title="Purchase" />} />
-        <Route path="payments" element={<ComingSoonScreen title="Payment" />} />
+        <Route path="sales" element={<SalesEntryScreen />} />
+        <Route path="purchases" element={<PurchaseEntryScreen />} />
+        <Route path="payments" element={<PaymentEntryScreen />} />
         <Route path="ledger" element={<LedgerScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

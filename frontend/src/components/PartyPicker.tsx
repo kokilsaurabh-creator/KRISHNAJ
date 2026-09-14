@@ -11,9 +11,17 @@ import { api, type Party } from "../lib/api";
 export default function PartyPicker({
   value,
   onChange,
+  allowedTypes,
+  placeholder = "Search party by name",
 }: {
   value: Party | null;
   onChange: (party: Party | null) => void;
+  /** Restricts which parties can be chosen. A 'both' party belongs on
+   * either side, so pass it alongside the side you want — filtering is
+   * done here rather than via the API's exact-match `type` filter, which
+   * would drop 'both' parties from the list. */
+  allowedTypes?: Party["party_type"][];
+  placeholder?: string;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -35,7 +43,9 @@ export default function PartyPicker({
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, []);
 
-  const results = (data ?? []).slice(0, 20);
+  const results = (data ?? [])
+    .filter((p) => !allowedTypes || allowedTypes.includes(p.party_type))
+    .slice(0, 20);
 
   if (value) {
     return (
@@ -70,7 +80,7 @@ export default function PartyPicker({
       <input
         type="search"
         className="field"
-        placeholder="Search party by name"
+        placeholder={placeholder}
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
