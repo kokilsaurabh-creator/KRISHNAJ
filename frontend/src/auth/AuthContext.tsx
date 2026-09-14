@@ -80,3 +80,14 @@ export function useAuth(): AuthState {
   if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
   return ctx;
 }
+
+export function roleLabel(role: Role): string {
+  switch (role) {
+    case "owner":
+      return "Owner";
+    case "admin":
+      return "Admin";
+    case "staff":
+      return "Staff";
+  }
+}

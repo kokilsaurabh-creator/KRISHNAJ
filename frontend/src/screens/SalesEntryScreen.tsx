@@ -7,6 +7,7 @@ import ProductPicker from "../components/ProductPicker";
 import { ApiError, api, type Party, type Product, type Sale } from "../lib/api";
 import { formatDisplayDate } from "../lib/dates";
 import { compareAmounts, formatAmount, isValidDecimal, lineAmount, subtractAmounts, sumAmounts } from "../lib/money";
+import { useOnlineStatus } from "../lib/useOnlineStatus";
 
 type LineDraft = { key: number; product: Product | null; quantity: string; rate: string };
 
@@ -21,6 +22,7 @@ function todayIso(): string {
 
 export default function SalesEntryScreen() {
   const queryClient = useQueryClient();
+  const online = useOnlineStatus();
   const [party, setParty] = useState<Party | null>(null);
   const [invoiceDate, setInvoiceDate] = useState(todayIso);
   const [lines, setLines] = useState<LineDraft[]>([newLine(0)]);
@@ -40,7 +42,8 @@ export default function SalesEntryScreen() {
   const linesComplete = lines.every(
     (l) => l.product !== null && isValidDecimal(l.quantity, 3) && isValidDecimal(l.rate, 2) && compareAmounts(lineAmount(l.quantity, l.rate), "0") >= 0,
   );
-  const canSave = party !== null && invoiceDate !== "" && lines.length > 0 && linesComplete && discountWithinGross && !saving;
+  const canSave =
+    party !== null && invoiceDate !== "" && lines.length > 0 && linesComplete && discountWithinGross && !saving && online;
 
   function updateLine(key: number, patch: Partial<LineDraft>) {
     setLines((current) => current.map((l) => (l.key === key ? { ...l, ...patch } : l)));

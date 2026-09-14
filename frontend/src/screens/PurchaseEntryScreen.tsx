@@ -6,6 +6,7 @@ import PartyPicker from "../components/PartyPicker";
 import { ApiError, api, type Party, type Purchase } from "../lib/api";
 import { formatDisplayDate } from "../lib/dates";
 import { compareAmounts, formatAmount, isValidDecimal, lineAmount, subtractAmounts, sumAmounts } from "../lib/money";
+import { useOnlineStatus } from "../lib/useOnlineStatus";
 
 type LineDraft = { key: number; description: string; uom: string; quantity: string; rate: string };
 
@@ -20,6 +21,7 @@ function todayIso(): string {
 
 export default function PurchaseEntryScreen() {
   const queryClient = useQueryClient();
+  const online = useOnlineStatus();
   const [party, setParty] = useState<Party | null>(null);
   const [billNo, setBillNo] = useState("");
   const [billDate, setBillDate] = useState(todayIso);
@@ -41,7 +43,13 @@ export default function PurchaseEntryScreen() {
     (l) => l.description.trim() !== "" && isValidDecimal(l.quantity, 3) && isValidDecimal(l.rate, 2),
   );
   const canSave =
-    party !== null && billNo.trim() !== "" && billDate !== "" && linesComplete && discountWithinGross && !saving;
+    party !== null &&
+    billNo.trim() !== "" &&
+    billDate !== "" &&
+    linesComplete &&
+    discountWithinGross &&
+    !saving &&
+    online;
 
   function updateLine(key: number, patch: Partial<LineDraft>) {
     setLines((current) => current.map((l) => (l.key === key ? { ...l, ...patch } : l)));

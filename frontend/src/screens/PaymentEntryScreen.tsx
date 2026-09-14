@@ -6,6 +6,7 @@ import PartyPicker from "../components/PartyPicker";
 import { ApiError, PAYMENT_MODES, api, type Party, type Payment, type PaymentDirection } from "../lib/api";
 import { formatDisplayDate } from "../lib/dates";
 import { compareAmounts, formatAmount, isValidDecimal } from "../lib/money";
+import { useOnlineStatus } from "../lib/useOnlineStatus";
 
 function todayIso(): string {
   const d = new Date();
@@ -19,6 +20,7 @@ const DIRECTIONS: { value: PaymentDirection; label: string; hint: string }[] = [
 
 export default function PaymentEntryScreen() {
   const queryClient = useQueryClient();
+  const online = useOnlineStatus();
   const [party, setParty] = useState<Party | null>(null);
   const [direction, setDirection] = useState<PaymentDirection>("in");
   const [paymentDate, setPaymentDate] = useState(todayIso);
@@ -31,7 +33,7 @@ export default function PaymentEntryScreen() {
   const [saved, setSaved] = useState<Payment | null>(null);
 
   const amountValid = isValidDecimal(amount, 2) && compareAmounts(amount, "0") > 0;
-  const canSave = party !== null && paymentDate !== "" && amountValid && mode.trim() !== "" && !saving;
+  const canSave = party !== null && paymentDate !== "" && amountValid && mode.trim() !== "" && !saving && online;
 
   function resetForm() {
     setParty(null);

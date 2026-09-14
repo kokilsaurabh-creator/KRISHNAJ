@@ -1,10 +1,14 @@
 import { NavLink, Outlet } from "react-router-dom";
 
-import { useAuth } from "../auth/AuthContext";
+import { roleLabel, useAuth } from "../auth/AuthContext";
+import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { AppBarLogo } from "./Logo";
+import InstallPrompt from "./InstallPrompt";
 
 const TABS = [
   { to: "/", label: "Home", end: true },
+  { to: "/parties", label: "Parties", end: false },
+  { to: "/products", label: "Products", end: false },
   { to: "/sales", label: "Sales", end: false },
   { to: "/purchases", label: "Purchase", end: false },
   { to: "/payments", label: "Payment", end: false },
@@ -13,6 +17,7 @@ const TABS = [
 
 export default function AppShell() {
   const { user, signOut } = useAuth();
+  const online = useOnlineStatus();
 
   return (
     <div className="flex min-h-full flex-col bg-white">
@@ -22,7 +27,7 @@ export default function AppShell() {
             <AppBarLogo />
             {user && (
               <p className="truncate text-xs text-white/75">
-                {user.display_name} · {user.role === "owner" ? "Owner" : user.role === "admin" ? "Admin" : "Staff"}
+                {user.display_name} · {roleLabel(user.role)}
               </p>
             )}
           </div>
@@ -54,9 +59,17 @@ export default function AppShell() {
         </div>
       </header>
 
+      {!online && (
+        <div className="bg-danger px-4 py-2 text-center text-sm font-medium text-white">
+          You're offline — changes can't be saved right now.
+        </div>
+      )}
+
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-24 pt-4 sm:pb-8">
         <Outlet />
       </main>
+
+      <InstallPrompt />
 
       {/* Bottom tab bar, mobile only */}
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-neutral-200 bg-white sm:hidden">
