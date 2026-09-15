@@ -6,7 +6,16 @@ import PartyPicker from "../components/PartyPicker";
 import ProductPicker from "../components/ProductPicker";
 import { ApiError, api, type Party, type Product, type Sale } from "../lib/api";
 import { formatDisplayDate } from "../lib/dates";
-import { compareAmounts, formatAmount, isValidDecimal, lineAmount, subtractAmounts, sumAmounts } from "../lib/money";
+import {
+  compareAmounts,
+  formatAmount,
+  isValidDecimal,
+  lineAmount,
+  percentBack,
+  percentOf,
+  subtractAmounts,
+  sumAmounts,
+} from "../lib/money";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 
 type LineDraft = { key: number; product: Product | null; quantity: string; rate: string };
@@ -27,7 +36,7 @@ export default function SalesEntryScreen() {
   const [invoiceDate, setInvoiceDate] = useState(todayIso);
   const [lines, setLines] = useState<LineDraft[]>([newLine(0)]);
   const [nextKey, setNextKey] = useState(1);
-  const [discount, setDiscount] = useState("0");
+  const [discountPct, setDiscountPct] = useState("0");
   const [narration, setNarration] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,15 +44,20 @@ export default function SalesEntryScreen() {
 
   const lineAmounts = lines.map((l) => lineAmount(l.quantity, l.rate));
   const gross = sumAmounts(lineAmounts);
-  const discountValid = isValidDecimal(discount, 2) && compareAmounts(discount, "0") >= 0;
-  const discountWithinGross = discountValid && compareAmounts(discount, gross) <= 0;
-  const net = discountWithinGross ? subtractAmounts(gross, discount) : gross;
+  const discountPctValid =
+    isValidDecimal(discountPct, 2) &&
+    compareAmounts(discountPct, "0") >= 0 &&
+    compareAmounts(discountPct, "100") <= 0;
+  // A percentage of 0-100 can never discount past the gross amount, so
+  // there's no separate "within gross" check needed here.
+  const discountAmount = discountPctValid ? percentOf(gross, discountPct) : "0.00";
+  const net = discountPctValid ? subtractAmounts(gross, discountAmount) : gross;
 
   const linesComplete = lines.every(
     (l) => l.product !== null && isValidDecimal(l.quantity, 3) && isValidDecimal(l.rate, 2) && compareAmounts(lineAmount(l.quantity, l.rate), "0") >= 0,
   );
   const canSave =
-    party !== null && invoiceDate !== "" && lines.length > 0 && linesComplete && discountWithinGross && !saving && online;
+    party !== null && invoiceDate !== "" && lines.length > 0 && linesComplete && discountPctValid && !saving && online;
 
   function updateLine(key: number, patch: Partial<LineDraft>) {
     setLines((current) => current.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -54,7 +68,7 @@ export default function SalesEntryScreen() {
     setInvoiceDate(todayIso());
     setLines([newLine(nextKey)]);
     setNextKey((k) => k + 1);
-    setDiscount("0");
+    setDiscountPct("0");
     setNarration("");
     setSaved(null);
     setError(null);
@@ -69,7 +83,7 @@ export default function SalesEntryScreen() {
       const sale = await api.postJson<Sale>("/sales", {
         party_id: party.id,
         invoice_date: invoiceDate,
-        discount,
+        discount: discountAmount,
         narration: narration.trim() === "" ? null : narration.trim(),
         lines: lines.map((l) => ({
           product_id: l.product!.id,
@@ -114,7 +128,9 @@ export default function SalesEntryScreen() {
                 <td className="amount px-4 py-2 text-right">{formatAmount(saved.gross_amount)}</td>
               </tr>
               <tr className="border-b border-neutral-100">
-                <td className="px-4 py-2 text-neutral-600">Discount</td>
+                <td className="px-4 py-2 text-neutral-600">
+                  Discount ({Number(percentBack(saved.gross_amount, saved.discount))}%)
+                </td>
                 <td className="amount px-4 py-2 text-right">{formatAmount(saved.discount)}</td>
               </tr>
               <tr>
@@ -252,20 +268,28 @@ export default function SalesEntryScreen() {
         </div>
 
         <div className="flex items-center justify-between gap-4">
-          <label htmlFor="discount" className="text-sm text-neutral-600">
-            Discount
+          <label htmlFor="discount-pct" className="text-sm text-neutral-600">
+            Discount %
           </label>
-          <input
-            id="discount"
-            className="field amount w-40 text-right"
-            inputMode="decimal"
-            value={discount}
-            onChange={(e) => setDiscount(e.target.value)}
-          />
+          <div className="relative w-40">
+            <input
+              id="discount-pct"
+              className="field amount w-full pr-7 text-right"
+              inputMode="decimal"
+              value={discountPct}
+              onChange={(e) => setDiscountPct(e.target.value)}
+            />
+            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-neutral-500">
+              %
+            </span>
+          </div>
         </div>
-        {!discountWithinGross && (
-          <p className="text-right text-sm text-danger">Discount must be between 0 and the gross amount.</p>
-        )}
+        {!discountPctValid && <p className="text-right text-sm text-danger">Discount % must be between 0 and 100.</p>}
+
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm text-neutral-600">Discount amount</span>
+          <span className="amount text-neutral-700">{formatAmount(discountAmount)}</span>
+        </div>
 
         <div className="flex items-center justify-between gap-4 border-t border-neutral-200 pt-3">
           <span className="font-medium">Net</span>

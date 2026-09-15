@@ -93,6 +93,27 @@ export function lineAmount(quantity: string, rate: string): string {
   return fromCents(Math.round((q * r) / 1000));
 }
 
+/** base × pct/100, rounded half-up to paise — e.g. a discount % entry
+ * turned into the amount actually sent to the API. */
+export function percentOf(base: string, pct: string): string {
+  const b = toScaledInt(base, 2);
+  const p = toScaledInt(pct, 2);
+  if (b === null || p === null) return "0.00";
+  // b and p are both scaled ×100, so b*p is scaled ×10,000; dividing by
+  // 10,000 gets back to paise (rupees ×100).
+  return fromCents(Math.round((b * p) / 10000));
+}
+
+/** Inverse of percentOf: what percentage `amount` is of `base`. For
+ * records that only ever stored the amount (nothing here changes what's
+ * sent to the API) — lets the UI still show a % for them. */
+export function percentBack(base: string, amount: string): string {
+  const b = toScaledInt(base, 2);
+  const a = toScaledInt(amount, 2);
+  if (b === null || a === null || b === 0) return "0.00";
+  return fromCents(Math.round((a * 10000) / b));
+}
+
 export function sumAmounts(values: string[]): string {
   return fromCents(values.reduce((total, v) => total + (toScaledInt(v, 2) ?? 0), 0));
 }
