@@ -29,12 +29,25 @@ export default function PaymentEntryScreen() {
   const [mode, setMode] = useState<string>("Cash");
   const [referenceNo, setReferenceNo] = useState("");
   const [narration, setNarration] = useState("");
+  const [transferEnabled, setTransferEnabled] = useState(false);
+  const [transferParty, setTransferParty] = useState<Party | null>(null);
+  const [transferAmount, setTransferAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<Payment | null>(null);
 
   const amountValid = isValidDecimal(amount, 2) && compareAmounts(amount, "0") > 0;
-  const canSave = party !== null && paymentDate !== "" && amountValid && mode.trim() !== "" && !saving && online;
+  // Only a receipt from a customer can be split off to a vendor — the
+  // toggle is hidden for direction "out" (see the "Received" tile below),
+  // so this only matters if direction flips after it was turned on.
+  const transferActive = transferEnabled && direction === "in";
+  const transferAmountValid =
+    isValidDecimal(transferAmount, 2) &&
+    compareAmounts(transferAmount, "0") > 0 &&
+    (!amountValid || compareAmounts(transferAmount, amount) <= 0);
+  const transferValid = !transferActive || (transferParty !== null && transferAmountValid);
+  const canSave =
+    party !== null && paymentDate !== "" && amountValid && mode.trim() !== "" && transferValid && !saving && online;
 
   function resetForm() {
     setParty(null);
@@ -44,6 +57,9 @@ export default function PaymentEntryScreen() {
     setMode("Cash");
     setReferenceNo("");
     setNarration("");
+    setTransferEnabled(false);
+    setTransferParty(null);
+    setTransferAmount("");
     setSaved(null);
     setError(null);
   }
@@ -62,6 +78,9 @@ export default function PaymentEntryScreen() {
         mode,
         reference_no: referenceNo.trim() === "" ? null : referenceNo.trim(),
         narration: narration.trim() === "" ? null : narration.trim(),
+        ...(transferActive && transferParty
+          ? { transfer_to_party_id: transferParty.id, transfer_amount: transferAmount }
+          : {}),
       });
       setSaved(payment);
       void queryClient.invalidateQueries({ queryKey: ["ledger"] });
@@ -104,12 +123,18 @@ export default function PaymentEntryScreen() {
                   <td className="px-4 py-2 text-right">{saved.reference_no}</td>
                 </tr>
               )}
-              <tr>
+              <tr className={saved.transfer_to_party_id ? "border-b border-neutral-100" : ""}>
                 <td className="px-4 py-2 font-medium">Amount</td>
                 <td className="amount px-4 py-2 text-right text-base font-semibold text-teal">
                   {formatAmount(saved.amount)}
                 </td>
               </tr>
+              {saved.transfer_to_party_id && saved.transfer_amount && (
+                <tr>
+                  <td className="px-4 py-2 text-neutral-600">Transferred to {transferParty?.name ?? "vendor"}</td>
+                  <td className="amount px-4 py-2 text-right text-peacock">{formatAmount(saved.transfer_amount)}</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -174,6 +199,58 @@ export default function PaymentEntryScreen() {
               a returned advance from a supplier is money in. */}
           <PartyPicker value={party} onChange={setParty} />
         </div>
+
+        {direction === "in" && (
+          <div className="space-y-3 rounded-lg border border-neutral-200 p-3">
+            <label className="flex min-h-[36px] items-center gap-2 text-sm text-neutral-700">
+              <input
+                type="checkbox"
+                checked={transferEnabled}
+                onChange={(e) => {
+                  setTransferEnabled(e.target.checked);
+                  if (!e.target.checked) {
+                    setTransferParty(null);
+                    setTransferAmount("");
+                  }
+                }}
+                className="h-4 w-4 rounded border-neutral-300 text-teal focus:ring-teal"
+              />
+              Transfer part of this to a vendor
+            </label>
+
+            {transferEnabled && (
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-neutral-700">Vendor</label>
+                  <PartyPicker
+                    value={transferParty}
+                    onChange={setTransferParty}
+                    allowedTypes={["supplier", "both"]}
+                    placeholder="Search vendor by name"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="transfer-amount" className="mb-1.5 block text-sm font-medium text-neutral-700">
+                    Transfer amount
+                  </label>
+                  <input
+                    id="transfer-amount"
+                    className="field amount text-right"
+                    inputMode="decimal"
+                    value={transferAmount}
+                    onChange={(e) => setTransferAmount(e.target.value)}
+                    placeholder="0.00"
+                  />
+                  {transferAmount !== "" && !transferAmountValid && (
+                    <p className="mt-1 text-xs text-danger">
+                      Must be more than 0 and no more than the payment amount.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>

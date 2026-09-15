@@ -252,8 +252,25 @@ class Payment(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
+    # "Transfer part of this to a vendor": an IN payment from a customer
+    # where part of the cash received is passed straight on to a supplier
+    # without going through the bank. Both null together — a plain
+    # payment never touches these. See ledger.py / routers/payments.py
+    # for how this becomes a second ledger leg (source_table
+    # 'payment_transfer') on the same payment row.
+    transfer_to_party_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("parties.id"))
+    transfer_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+
     __table_args__ = (
         CheckConstraint("amount > 0", name="ck_payments_amount_positive"),
+        CheckConstraint(
+            "(transfer_to_party_id IS NULL) = (transfer_amount IS NULL)",
+            name="ck_payments_transfer_pair",
+        ),
+        CheckConstraint(
+            "transfer_amount IS NULL OR (transfer_amount > 0 AND transfer_amount <= amount)",
+            name="ck_payments_transfer_amount_bounds",
+        ),
         Index("idx_pay_party_date", "party_id", "payment_date"),
     )
 

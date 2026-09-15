@@ -1,7 +1,8 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models import DocStatus, PaymentDirection
 
@@ -14,6 +15,27 @@ class PaymentWrite(BaseModel):
     mode: str
     reference_no: str | None = None
     narration: str | None = None
+
+    # "Transfer part of this to a vendor" — both set together or both left
+    # out. Which party it's a valid destination for (active, supplier or
+    # 'both', not itself) needs a DB lookup, so that part is checked in
+    # the router, not here.
+    transfer_to_party_id: int | None = None
+    transfer_amount: Decimal | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def _validate_transfer(self) -> Self:
+        has_party = self.transfer_to_party_id is not None
+        has_amount = self.transfer_amount is not None
+        if has_party != has_amount:
+            raise ValueError("transfer_to_party_id and transfer_amount must be set together")
+        if has_amount and self.transfer_amount > self.amount:
+            raise ValueError("transfer_amount cannot exceed the payment amount")
+        if has_party and self.direction != PaymentDirection.IN:
+            raise ValueError("a transfer can only be made from a payment received (direction 'in')")
+        if has_party and self.transfer_to_party_id == self.party_id:
+            raise ValueError("cannot transfer to the same party that made the payment")
+        return self
 
 
 class PaymentOut(BaseModel):
@@ -29,6 +51,8 @@ class PaymentOut(BaseModel):
     reference_no: str | None
     narration: str | None
     status: DocStatus
+    transfer_to_party_id: int | None
+    transfer_amount: Decimal | None
     created_by: int
     cancelled_by: int | None
     cancelled_at: datetime | None

@@ -9,6 +9,16 @@ purchases.py. Two payment-specific choices:
   after that, a voucher stamped 'RCP/...' could end up meaning a payment
   out, which is exactly the kind of ambiguity a challan-book habit would
   never tolerate. Cancel and re-enter instead.
+
+"Transfer part of this to a vendor" (customer payments only): one payment
+row, two ledger rows sharing that row's id as source_id but under
+different source_table values — 'payments' for the receipt from the
+customer (full amount, as always) and 'payment_transfer' for the debit to
+the vendor (transfer amount only). The unique index on
+(source_table, source_id) is per-table, so this doesn't collide with the
+guarantee it gives every other document; it's what lets one payment have
+exactly two ledger rows instead of one. See PaymentWrite for the
+same-payment-amount / active-supplier-or-both validation.
 """
 
 from datetime import date, datetime, timezone
@@ -20,12 +30,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user, require_role
 from app.db import get_session
-from app.models import DocStatus, LedgerTxnType, Party, Payment, PaymentDirection, User, UserRole
+from app.models import DocStatus, LedgerTxnType, Party, PartyType, Payment, PaymentDirection, User, UserRole
 from app.schemas.payment import PaymentCancelRequest, PaymentOut, PaymentWrite
 from app.services import ledger
 from app.services.doc_numbering import allocate_doc_number
 
 router = APIRouter(prefix="/payments", tags=["payments"], dependencies=[Depends(get_current_user)])
+
+TRANSFER_SOURCE_TABLE = "payment_transfer"
 
 
 def _txn_type_and_sign(direction: PaymentDirection, amount: Decimal) -> tuple[LedgerTxnType, Decimal, Decimal]:
@@ -40,6 +52,43 @@ def _doc_type_and_prefix(direction: PaymentDirection) -> tuple[str, str]:
     return "payment", "PMT/"
 
 
+async def _load_transfer_target(session: AsyncSession, transfer_to_party_id: int) -> Party:
+    vendor = await session.get(Party, transfer_to_party_id)
+    if vendor is None or not vendor.is_active:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Transfer party not found or inactive")
+    if vendor.party_type not in (PartyType.supplier, PartyType.both):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Transfer party must be a supplier")
+    return vendor
+
+
+async def _post_transfer_leg(
+    session: AsyncSession,
+    *,
+    payment_id: int,
+    vendor: Party,
+    transfer_amount: Decimal,
+    payment_date: date,
+    voucher_no: str,
+    from_party_name: str,
+) -> None:
+    """Post (or replace) the payment_transfer ledger leg. `vendor` must
+    already be validated — this does no lookups of its own, on purpose:
+    see the "validate before writing" note on both callers below.
+    """
+    await ledger.repost_for_source(
+        session,
+        source_table=TRANSFER_SOURCE_TABLE,
+        source_id=payment_id,
+        party_id=vendor.id,
+        txn_date=payment_date,
+        txn_type=LedgerTxnType.payment,
+        doc_no=voucher_no,
+        debit=transfer_amount,
+        credit=Decimal("0"),
+        narration=f"Transfer from {from_party_name}'s payment {voucher_no}",
+    )
+
+
 @router.post("", response_model=PaymentOut, status_code=status.HTTP_201_CREATED)
 async def create_payment(
     body: PaymentWrite,
@@ -49,6 +98,13 @@ async def create_payment(
     party = await session.get(Party, body.party_id)
     if party is None or not party.is_active:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Party not found or inactive")
+
+    # Validated before anything is written: a payment row with a
+    # transfer_to_party_id pointing nowhere would fail as a raw foreign-key
+    # violation at flush time, not this clean 400.
+    vendor: Party | None = None
+    if body.transfer_to_party_id is not None:
+        vendor = await _load_transfer_target(session, body.transfer_to_party_id)
 
     doc_type, prefix = _doc_type_and_prefix(body.direction)
     voucher_no = await allocate_doc_number(session, doc_type=doc_type, txn_date=body.payment_date, prefix=prefix)
@@ -62,11 +118,16 @@ async def create_payment(
         mode=body.mode,
         reference_no=body.reference_no,
         narration=body.narration,
+        transfer_to_party_id=body.transfer_to_party_id,
+        transfer_amount=body.transfer_amount,
         created_by=current_user.id,
     )
     session.add(payment)
     await session.flush()
 
+    # Leg 1: the customer is credited for the FULL amount received,
+    # regardless of whether any of it gets transferred on — unchanged
+    # from a plain payment.
     txn_type, debit, credit = _txn_type_and_sign(body.direction, body.amount)
     await ledger.post_to_ledger(
         session,
@@ -80,6 +141,21 @@ async def create_payment(
         credit=credit,
         narration=body.narration,
     )
+
+    # Leg 2, only if a transfer was requested: the vendor is debited for
+    # the transfer amount only. The untransferred remainder needs no
+    # entry of its own — it's cash retained, already reflected in leg 1.
+    if vendor is not None:
+        assert body.transfer_amount is not None  # PaymentWrite guarantees the pair
+        await _post_transfer_leg(
+            session,
+            payment_id=payment.id,
+            vendor=vendor,
+            transfer_amount=body.transfer_amount,
+            payment_date=body.payment_date,
+            voucher_no=voucher_no,
+            from_party_name=party.name,
+        )
 
     await session.commit()
     await session.refresh(payment)
@@ -136,12 +212,21 @@ async def update_payment(
     if party is None or not party.is_active:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Party not found or inactive")
 
+    # Same ordering as create_payment: validate before this ORM object is
+    # touched, so a bad vendor id 400s cleanly instead of surfacing as a
+    # foreign-key violation when the UPDATE is flushed.
+    vendor: Party | None = None
+    if body.transfer_to_party_id is not None:
+        vendor = await _load_transfer_target(session, body.transfer_to_party_id)
+
     payment.party_id = body.party_id
     payment.payment_date = body.payment_date
     payment.amount = body.amount
     payment.mode = body.mode
     payment.reference_no = body.reference_no
     payment.narration = body.narration
+    payment.transfer_to_party_id = body.transfer_to_party_id
+    payment.transfer_amount = body.transfer_amount
 
     txn_type, debit, credit = _txn_type_and_sign(body.direction, body.amount)
     await ledger.repost_for_source(
@@ -156,6 +241,24 @@ async def update_payment(
         credit=credit,
         narration=body.narration,
     )
+
+    # Keeps the second leg in step with the edit: reposted if a transfer
+    # is (still, or newly) present, removed if it was dropped. Without
+    # this an edit that changes or clears the transfer would leave the
+    # vendor's ledger wrong while the payment record itself looked fine.
+    if vendor is not None:
+        assert body.transfer_amount is not None  # PaymentWrite guarantees the pair
+        await _post_transfer_leg(
+            session,
+            payment_id=payment.id,
+            vendor=vendor,
+            transfer_amount=body.transfer_amount,
+            payment_date=body.payment_date,
+            voucher_no=payment.voucher_no,
+            from_party_name=party.name,
+        )
+    else:
+        await ledger.remove_for_source(session, source_table=TRANSFER_SOURCE_TABLE, source_id=payment.id)
 
     await session.commit()
     await session.refresh(payment)
@@ -185,6 +288,10 @@ async def cancel_payment(
     payment.cancel_reason = body.reason
 
     await ledger.remove_for_source(session, source_table="payments", source_id=payment.id)
+    # Unconditional and idempotent — a no-op for a payment that never had
+    # a transfer, and removes leg 2 for one that did. Either way both
+    # legs of this payment are gone.
+    await ledger.remove_for_source(session, source_table=TRANSFER_SOURCE_TABLE, source_id=payment.id)
 
     await session.commit()
     await session.refresh(payment)

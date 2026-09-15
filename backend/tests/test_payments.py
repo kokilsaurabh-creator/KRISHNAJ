@@ -156,6 +156,35 @@ async def test_cancelled_payment_rejects_further_edits_and_cancellation(client, 
 
 
 @pytest.mark.asyncio
+async def test_transfer_to_vendor_splits_ledger_and_cancel_restores_both(session, client, owner_user, party, supplier):
+    body = _payment_body(party.id, direction="in", amount="100.00")
+    body["transfer_to_party_id"] = supplier.id
+    body["transfer_amount"] = "60.00"
+
+    create = await client.post("/payments", json=body, headers=auth_headers(owner_user))
+    assert create.status_code == 201
+    payment_id = create.json()["id"]
+    payment_date = date.fromisoformat(create.json()["payment_date"])
+
+    customer_report = await ledger.get_ledger(session, party.id, payment_date, payment_date)
+    assert customer_report.closing == Decimal("-100.00")  # full amount received, credit
+
+    vendor_report = await ledger.get_ledger(session, supplier.id, payment_date, payment_date)
+    assert vendor_report.closing == Decimal("60.00")  # transfer amount only, debit
+
+    cancel = await client.post(
+        f"/payments/{payment_id}/cancel", json={"reason": "test"}, headers=auth_headers(owner_user)
+    )
+    assert cancel.status_code == 200
+
+    customer_after = await ledger.get_ledger(session, party.id, payment_date, payment_date)
+    assert customer_after.closing == Decimal("0.00")
+
+    vendor_after = await ledger.get_ledger(session, supplier.id, payment_date, payment_date)
+    assert vendor_after.closing == Decimal("0.00")
+
+
+@pytest.mark.asyncio
 async def test_staff_gets_403_cancelling_a_payment(client, staff_user, owner_user, party):
     create = await client.post("/payments", json=_payment_body(party.id), headers=auth_headers(owner_user))
     payment_id = create.json()["id"]

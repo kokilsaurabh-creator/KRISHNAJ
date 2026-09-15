@@ -214,6 +214,8 @@ export type Payment = {
   reference_no: string | null;
   narration: string | null;
   status: DocStatus;
+  transfer_to_party_id: number | null;
+  transfer_amount: string | null;
 };
 
 export type Attachment = {
