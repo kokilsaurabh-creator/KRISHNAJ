@@ -78,6 +78,12 @@ export const api = {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams(fields).toString(),
     }),
+
+  /** File uploads. No Content-Type here on purpose — the browser has to
+   * set it itself so the multipart boundary goes with it. */
+  postMultipart: <T>(path: string, body: FormData) => request<T>(path, { method: "POST", body }),
+
+  del: (path: string) => request<void>(path, { method: "DELETE" }),
 };
 
 // ---- response types, mirroring the backend schemas ----
@@ -208,6 +214,17 @@ export type Payment = {
   reference_no: string | null;
   narration: string | null;
   status: DocStatus;
+};
+
+export type Attachment = {
+  id: number;
+  entity_type: string;
+  entity_id: number;
+  url: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
 };
 
 export type ActivityType = "sale" | "purchase" | "payment";

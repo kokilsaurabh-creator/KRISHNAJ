@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # preflight and this is never consulted — nothing to set there.
     cors_origins: str = "http://localhost:5173"
 
+    # Vercel Blob. On Vercel itself the SDK authenticates via OIDC and this
+    # stays empty; it's the documented fallback for code running outside
+    # Vercel, which means local development.
+    blob_read_write_token: str | None = None
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

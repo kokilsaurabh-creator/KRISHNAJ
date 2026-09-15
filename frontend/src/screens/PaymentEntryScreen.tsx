@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
+import AttachmentPanel from "../components/AttachmentPanel";
 import PartyPicker from "../components/PartyPicker";
 import { ApiError, PAYMENT_MODES, api, type Party, type Payment, type PaymentDirection } from "../lib/api";
 import { formatDisplayDate } from "../lib/dates";
@@ -111,6 +112,15 @@ export default function PaymentEntryScreen() {
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div className="rounded-xl border border-neutral-200 p-4">
+          <AttachmentPanel
+            entityType="payment"
+            entityId={saved.id}
+            label="Screenshots"
+            hint="UPI confirmation, cheque photo. Resized before upload."
+          />
         </div>
 
         <div className="flex flex-wrap gap-3">

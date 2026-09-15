@@ -9,7 +9,7 @@ type AuthState = {
   signOut: () => void;
   /** UI convenience only — the backend enforces this independently on
    * every restricted route, so hiding a button is never the control. */
-  can: (action: "cancel_documents" | "edit_masters") => boolean;
+  can: (action: "cancel_documents" | "edit_masters" | "delete_attachments") => boolean;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -55,12 +55,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const can = useCallback(
-    (action: "cancel_documents" | "edit_masters") => {
+    (action: "cancel_documents" | "edit_masters" | "delete_attachments") => {
       const privileged: Role[] = ["admin", "owner"];
       if (!user) return false;
       switch (action) {
         case "cancel_documents":
         case "edit_masters":
+        case "delete_attachments":
           return privileged.includes(user.role);
       }
     },
