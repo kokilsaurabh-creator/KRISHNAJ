@@ -162,6 +162,7 @@ export type BankLedgerRow = {
   debit: string;
   credit: string;
   balance: string;
+  party_name: string | null;
 };
 
 export type BankLedger = {

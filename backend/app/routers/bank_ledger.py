@@ -48,6 +48,7 @@ async def get_bank_ledger_report(
                 debit=row.debit,
                 credit=row.credit,
                 balance=row.balance,
+                party_name=row.party_name,
             )
             for row in report.rows
         ],

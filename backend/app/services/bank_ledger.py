@@ -27,7 +27,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import BankLedgerEntry, LedgerTxnType
+from app.models import BankLedgerEntry, LedgerTxnType, Party, Payment
 from app.services.ledger import DuplicatePostingError, InvalidDateRangeError, InvalidLedgerAmountError
 
 TWO_PLACES = Decimal("0.01")
@@ -53,6 +53,12 @@ class BankLedgerRow:
     debit: Decimal
     credit: Decimal
     balance: Decimal
+    # Resolved from the payment this row came from — bank_ledger_entries
+    # has no party_id of its own, only source_table/source_id. None for
+    # the opening-balance row (source_table is None there) or if the
+    # payment or its party has since been deleted, neither of which this
+    # app actually does.
+    party_name: str | None
 
 
 @dataclass(frozen=True)
@@ -248,6 +254,17 @@ async def get_bank_ledger(
     )
     entries = rows_result.scalars().all()
 
+    # Every non-opening row's source_table is 'payments' (see
+    # routers/payments.py) — one batched join instead of a lookup per
+    # row, since a bank's statement can run to hundreds of entries.
+    payment_ids = {e.source_id for e in entries if e.source_table == "payments" and e.source_id is not None}
+    party_name_by_payment_id: dict[int, str] = {}
+    if payment_ids:
+        party_rows = await session.execute(
+            select(Payment.id, Party.name).join(Party, Party.id == Payment.party_id).where(Payment.id.in_(payment_ids))
+        )
+        party_name_by_payment_id = dict(party_rows.all())
+
     rows: list[BankLedgerRow] = []
     running = opening
     total_debit = Decimal("0.00")
@@ -266,6 +283,7 @@ async def get_bank_ledger(
                 debit=entry.debit,
                 credit=entry.credit,
                 balance=running,
+                party_name=party_name_by_payment_id.get(entry.source_id) if entry.source_table == "payments" else None,
             )
         )
 

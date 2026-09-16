@@ -88,7 +88,12 @@ export function buildBankLedgerDocDefinition(bankLedger: BankLedger) {
   const txnRows = bankLedger.rows.map((row) => [
     { text: formatDisplayDate(row.date), fontSize: 9 },
     { text: TXN_TYPE_LABELS[row.type], fontSize: 9 },
-    { text: row.doc_no ?? "—", fontSize: 9 },
+    {
+      stack: [
+        { text: row.doc_no ?? "—", fontSize: 9 },
+        ...(row.party_name ? [{ text: row.party_name, fontSize: 7.5, color: "#666666" }] : []),
+      ],
+    },
     { text: row.narration ?? "", fontSize: 9 },
     { text: row.debit === "0.00" ? "" : formatAmount(row.debit), fontSize: 9, alignment: "right" as const },
     { text: row.credit === "0.00" ? "" : formatAmount(row.credit), fontSize: 9, alignment: "right" as const },

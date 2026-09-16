@@ -26,6 +26,7 @@ class BankLedgerRowOut(BaseModel):
     debit: Decimal
     credit: Decimal
     balance: Decimal
+    party_name: str | None
 
 
 class BankLedgerOut(BaseModel):

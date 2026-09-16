@@ -188,6 +188,7 @@ export default function BankLedgerScreen() {
                           {formatDisplayDate(row.date)}
                           {row.doc_no ? ` · ${row.doc_no}` : ""}
                         </p>
+                        {row.party_name && <p className="text-xs text-neutral-600">{row.party_name}</p>}
                       </div>
                       <p className="amount shrink-0 text-right text-base font-semibold text-neutral-900">
                         {row.debit !== "0.00" ? `+${formatAmount(row.debit)}` : `−${formatAmount(row.credit)}`}
@@ -235,7 +236,10 @@ export default function BankLedgerScreen() {
                         <td className={`py-2 pr-3 whitespace-nowrap font-medium ${typeClass(row.type)}`}>
                           {TXN_TYPE_LABELS[row.type]}
                         </td>
-                        <td className="py-2 pr-3 whitespace-nowrap text-neutral-600">{row.doc_no ?? "—"}</td>
+                        <td className="py-2 pr-3 whitespace-nowrap text-neutral-600">
+                          {row.doc_no ?? "—"}
+                          {row.party_name && <span className="block text-xs text-neutral-500">{row.party_name}</span>}
+                        </td>
                         <td className="py-2 pr-3 text-neutral-600">{row.narration ?? ""}</td>
                         <td className="amount py-2 pl-3 text-right text-neutral-900">
                           {row.debit === "0.00" ? "" : formatAmount(row.debit)}
