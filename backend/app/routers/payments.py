@@ -19,6 +19,16 @@ the vendor (transfer amount only). The unique index on
 guarantee it gives every other document; it's what lets one payment have
 exactly two ledger rows instead of one. See PaymentWrite for the
 same-payment-amount / active-supplier-or-both validation.
+
+Bank tracking: a third, independent leg, in a different table again
+(bank_ledger_entries, not ledger_entries) — so it reuses source_table
+'payments' rather than needing its own distinct value; that table's own
+unique index on (source_table, source_id) is what stops a payment
+posting to a bank twice, same mechanism as everywhere else, just scoped
+to bank_ledger_entries instead of ledger_entries. Mutually exclusive
+with the transfer above: bank_id is required unless transferring, and
+must be absent when transferring (PaymentWrite enforces the shape;
+_load_bank enforces the bank itself is real and active).
 """
 
 from datetime import date, datetime, timezone
@@ -30,9 +40,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user, require_role
 from app.db import get_session
-from app.models import DocStatus, LedgerTxnType, Party, PartyType, Payment, PaymentDirection, User, UserRole
+from app.models import Bank, DocStatus, LedgerTxnType, Party, PartyType, Payment, PaymentDirection, User, UserRole
 from app.schemas.payment import PaymentCancelRequest, PaymentOut, PaymentWrite
-from app.services import ledger
+from app.services import bank_ledger, ledger
 from app.services.doc_numbering import allocate_doc_number
 
 router = APIRouter(prefix="/payments", tags=["payments"], dependencies=[Depends(get_current_user)])
@@ -44,6 +54,20 @@ def _txn_type_and_sign(direction: PaymentDirection, amount: Decimal) -> tuple[Le
     if direction == PaymentDirection.IN:
         return LedgerTxnType.receipt, Decimal("0"), amount  # debit, credit
     return LedgerTxnType.payment, amount, Decimal("0")
+
+
+def _bank_txn_type_and_sign(direction: PaymentDirection, amount: Decimal) -> tuple[LedgerTxnType, Decimal, Decimal]:
+    """The bank leg's sign is the OPPOSITE pair from _txn_type_and_sign,
+    not the same one: a receipt credits the party (reduces what they owe)
+    but debits the bank (money deposited in); a payment out debits the
+    party but credits the bank (money withdrawn). Kept as its own
+    function rather than reusing the party leg's debit/credit values, so
+    that relationship can't accidentally get re-collapsed into "just pass
+    the same numbers through" again.
+    """
+    if direction == PaymentDirection.IN:
+        return LedgerTxnType.receipt, amount, Decimal("0")  # deposit: debit
+    return LedgerTxnType.payment, Decimal("0"), amount  # withdrawal: credit
 
 
 def _doc_type_and_prefix(direction: PaymentDirection) -> tuple[str, str]:
@@ -59,6 +83,43 @@ async def _load_transfer_target(session: AsyncSession, transfer_to_party_id: int
     if vendor.party_type not in (PartyType.supplier, PartyType.both):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Transfer party must be a supplier")
     return vendor
+
+
+async def _load_bank(session: AsyncSession, bank_id: int) -> Bank:
+    bank = await session.get(Bank, bank_id)
+    if bank is None or not bank.is_active:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Bank not found or inactive")
+    return bank
+
+
+async def _post_bank_leg(
+    session: AsyncSession,
+    *,
+    payment_id: int,
+    bank_id: int,
+    payment_date: date,
+    direction: PaymentDirection,
+    amount: Decimal,
+    voucher_no: str,
+    narration: str | None,
+) -> None:
+    """Post (or replace) the bank ledger leg. Computes its own debit/credit
+    via _bank_txn_type_and_sign rather than accepting the party leg's
+    values — see that function for why they're not the same pair.
+    """
+    txn_type, debit, credit = _bank_txn_type_and_sign(direction, amount)
+    await bank_ledger.repost_for_source(
+        session,
+        source_table="payments",
+        source_id=payment_id,
+        bank_id=bank_id,
+        txn_date=payment_date,
+        txn_type=txn_type,
+        doc_no=voucher_no,
+        debit=debit,
+        credit=credit,
+        narration=narration,
+    )
 
 
 async def _post_transfer_leg(
@@ -100,11 +161,14 @@ async def create_payment(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Party not found or inactive")
 
     # Validated before anything is written: a payment row with a
-    # transfer_to_party_id pointing nowhere would fail as a raw foreign-key
-    # violation at flush time, not this clean 400.
+    # transfer_to_party_id or bank_id pointing nowhere would fail as a raw
+    # foreign-key violation at flush time, not this clean 400.
     vendor: Party | None = None
     if body.transfer_to_party_id is not None:
         vendor = await _load_transfer_target(session, body.transfer_to_party_id)
+    bank: Bank | None = None
+    if body.bank_id is not None:
+        bank = await _load_bank(session, body.bank_id)
 
     doc_type, prefix = _doc_type_and_prefix(body.direction)
     voucher_no = await allocate_doc_number(session, doc_type=doc_type, txn_date=body.payment_date, prefix=prefix)
@@ -120,6 +184,7 @@ async def create_payment(
         narration=body.narration,
         transfer_to_party_id=body.transfer_to_party_id,
         transfer_amount=body.transfer_amount,
+        bank_id=body.bank_id,
         created_by=current_user.id,
     )
     session.add(payment)
@@ -155,6 +220,20 @@ async def create_payment(
             payment_date=body.payment_date,
             voucher_no=voucher_no,
             from_party_name=party.name,
+        )
+
+    # Bank leg, only if a bank was selected (mutually exclusive with the
+    # transfer above — PaymentWrite guarantees exactly one applies).
+    if bank is not None:
+        await _post_bank_leg(
+            session,
+            payment_id=payment.id,
+            bank_id=bank.id,
+            payment_date=body.payment_date,
+            direction=body.direction,
+            amount=body.amount,
+            voucher_no=voucher_no,
+            narration=body.narration,
         )
 
     await session.commit()
@@ -213,11 +292,14 @@ async def update_payment(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Party not found or inactive")
 
     # Same ordering as create_payment: validate before this ORM object is
-    # touched, so a bad vendor id 400s cleanly instead of surfacing as a
-    # foreign-key violation when the UPDATE is flushed.
+    # touched, so a bad vendor/bank id 400s cleanly instead of surfacing as
+    # a foreign-key violation when the UPDATE is flushed.
     vendor: Party | None = None
     if body.transfer_to_party_id is not None:
         vendor = await _load_transfer_target(session, body.transfer_to_party_id)
+    bank: Bank | None = None
+    if body.bank_id is not None:
+        bank = await _load_bank(session, body.bank_id)
 
     payment.party_id = body.party_id
     payment.payment_date = body.payment_date
@@ -227,6 +309,7 @@ async def update_payment(
     payment.narration = body.narration
     payment.transfer_to_party_id = body.transfer_to_party_id
     payment.transfer_amount = body.transfer_amount
+    payment.bank_id = body.bank_id
 
     txn_type, debit, credit = _txn_type_and_sign(body.direction, body.amount)
     await ledger.repost_for_source(
@@ -260,6 +343,22 @@ async def update_payment(
     else:
         await ledger.remove_for_source(session, source_table=TRANSFER_SOURCE_TABLE, source_id=payment.id)
 
+    # Same idea for the bank leg — reposted if a bank is (still, or newly)
+    # selected, removed if it was cleared.
+    if bank is not None:
+        await _post_bank_leg(
+            session,
+            payment_id=payment.id,
+            bank_id=bank.id,
+            payment_date=body.payment_date,
+            direction=body.direction,
+            amount=body.amount,
+            voucher_no=payment.voucher_no,
+            narration=body.narration,
+        )
+    else:
+        await bank_ledger.remove_for_source(session, source_table="payments", source_id=payment.id)
+
     await session.commit()
     await session.refresh(payment)
     return payment
@@ -288,10 +387,11 @@ async def cancel_payment(
     payment.cancel_reason = body.reason
 
     await ledger.remove_for_source(session, source_table="payments", source_id=payment.id)
-    # Unconditional and idempotent — a no-op for a payment that never had
-    # a transfer, and removes leg 2 for one that did. Either way both
-    # legs of this payment are gone.
+    # Unconditional and idempotent — a no-op for legs that were never
+    # posted (a payment has at most one of transfer/bank), and removes
+    # whichever one was. Either way every leg of this payment is gone.
     await ledger.remove_for_source(session, source_table=TRANSFER_SOURCE_TABLE, source_id=payment.id)
+    await bank_ledger.remove_for_source(session, source_table="payments", source_id=payment.id)
 
     await session.commit()
     await session.refresh(payment)

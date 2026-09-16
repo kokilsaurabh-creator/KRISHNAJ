@@ -38,7 +38,7 @@ from app.config import get_settings
 from app.core.security import create_access_token
 from app.db import get_session, make_engine
 from app.main import app
-from app.models import Base, Party, PartyType, Product, User, UserRole
+from app.models import Bank, Base, Party, PartyType, Product, User, UserRole
 
 
 def _test_db_url() -> str:
@@ -148,3 +148,12 @@ async def product(session: AsyncSession) -> Product:
     await session.commit()
     await session.refresh(p)
     return p
+
+
+@pytest_asyncio.fixture
+async def bank(session: AsyncSession, owner_user: User) -> Bank:
+    b = Bank(name="HDFC Current A/C", account_number="000123456789", created_by=owner_user.id)
+    session.add(b)
+    await session.commit()
+    await session.refresh(b)
+    return b

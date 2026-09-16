@@ -18,7 +18,7 @@ def _sale_body(party_id: int, product_id: int, *, quantity="2", rate="500.00", d
 
 
 @pytest.mark.asyncio
-async def test_ledger_returns_opening_rows_totals_and_closing(client, owner_user, party, product):
+async def test_ledger_returns_opening_rows_totals_and_closing(client, owner_user, party, product, bank):
     headers = auth_headers(owner_user)
 
     await client.post(
@@ -37,6 +37,7 @@ async def test_ledger_returns_opening_rows_totals_and_closing(client, owner_user
             "direction": "in",
             "amount": "4000.00",
             "mode": "UPI",
+            "bank_id": bank.id,
         },
         headers=headers,
     )

@@ -100,6 +100,18 @@ class Product(Base):
     __table_args__ = (Index("idx_products_name", text("lower(name)")),)
 
 
+class Bank(Base):
+    __tablename__ = "banks"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    account_number: Mapped[str | None] = mapped_column(Text)
+    branch: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 # ============ ATTACHMENTS ============
 # Polymorphic: entity_type IN ('product', 'payment')
 
@@ -261,6 +273,18 @@ class Payment(Base):
     transfer_to_party_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("parties.id"))
     transfer_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
 
+    # Which bank account the money actually moved through. Required by the
+    # API whenever the transfer above isn't in play (that's a cash hand-off,
+    # never touches a bank); left null for a transfer payment, since that
+    # flow is explicitly untagged — see the payments router.
+    #
+    # Not a strict "exactly one of transfer/bank" CHECK constraint: rows
+    # from before this feature existed have neither, and forcing a bank
+    # onto historical cash entries would be inventing data, not recording
+    # it. The one thing enforced at the DB level is the case that's never
+    # legitimate — both set on the same payment.
+    bank_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("banks.id"))
+
     __table_args__ = (
         CheckConstraint("amount > 0", name="ck_payments_amount_positive"),
         CheckConstraint(
@@ -270,6 +294,10 @@ class Payment(Base):
         CheckConstraint(
             "transfer_amount IS NULL OR (transfer_amount > 0 AND transfer_amount <= amount)",
             name="ck_payments_transfer_amount_bounds",
+        ),
+        CheckConstraint(
+            "NOT (transfer_to_party_id IS NOT NULL AND bank_id IS NOT NULL)",
+            name="ck_payments_bank_or_transfer_not_both",
         ),
         Index("idx_pay_party_date", "party_id", "payment_date"),
     )
@@ -299,6 +327,42 @@ class LedgerEntry(Base):
         Index("idx_ledger_party_date", "party_id", "txn_date", "id"),
         Index(
             "idx_ledger_source",
+            "source_table",
+            "source_id",
+            unique=True,
+            postgresql_where=text("source_table IS NOT NULL"),
+        ),
+    )
+
+
+class BankLedgerEntry(Base):
+    """Same shape and discipline as LedgerEntry, one table over: a bank's
+    balance is SUM(debit) - SUM(credit), computed on read, never stored.
+    Sign convention (deposit = debit, withdrawal = credit) is the reverse
+    of how it reads in a passbook on purpose — it matches LedgerEntry's
+    own debit-increases-balance convention, so both ledgers behave the
+    same way to any code that touches them."""
+
+    __tablename__ = "bank_ledger_entries"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    bank_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("banks.id"), nullable=False)
+    txn_date: Mapped[date] = mapped_column(Date, nullable=False)
+    txn_type: Mapped[LedgerTxnType] = mapped_column(_pg_enum(LedgerTxnType, "ledger_txn_type"), nullable=False)
+    source_table: Mapped[str | None] = mapped_column(Text)
+    source_id: Mapped[int | None] = mapped_column(BigInteger)
+    doc_no: Mapped[str | None] = mapped_column(Text)
+    debit: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, server_default="0")
+    credit: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, server_default="0")
+    narration: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("debit >= 0 AND credit >= 0", name="ck_bank_ledger_entries_nonnegative"),
+        CheckConstraint("NOT (debit > 0 AND credit > 0)", name="ck_bank_ledger_entries_one_sided"),
+        Index("idx_bank_ledger_bank_date", "bank_id", "txn_date", "id"),
+        Index(
+            "idx_bank_ledger_source",
             "source_table",
             "source_id",
             unique=True,

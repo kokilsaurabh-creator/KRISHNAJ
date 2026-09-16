@@ -2,6 +2,8 @@ from app.models.base import Base
 from app.models.enums import DocStatus, LedgerTxnType, PartyType, PaymentDirection, UserRole
 from app.models.models import (
     Attachment,
+    Bank,
+    BankLedgerEntry,
     DocSequence,
     LedgerEntry,
     Party,
@@ -24,6 +26,7 @@ __all__ = [
     "User",
     "Party",
     "Product",
+    "Bank",
     "Attachment",
     "Sale",
     "SaleLine",
@@ -31,5 +34,6 @@ __all__ = [
     "PurchaseLine",
     "Payment",
     "LedgerEntry",
+    "BankLedgerEntry",
     "DocSequence",
 ]

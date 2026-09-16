@@ -23,6 +23,12 @@ class PaymentWrite(BaseModel):
     transfer_to_party_id: int | None = None
     transfer_amount: Decimal | None = Field(default=None, gt=0)
 
+    # Which bank the money moved through. Required unless the transfer
+    # above is active — a transfer is a cash hand-off, never a bank leg,
+    # so bank_id must be absent there rather than silently ignored.
+    # Existence/active-ness needs a DB lookup, checked in the router.
+    bank_id: int | None = None
+
     @model_validator(mode="after")
     def _validate_transfer(self) -> Self:
         has_party = self.transfer_to_party_id is not None
@@ -35,6 +41,11 @@ class PaymentWrite(BaseModel):
             raise ValueError("a transfer can only be made from a payment received (direction 'in')")
         if has_party and self.transfer_to_party_id == self.party_id:
             raise ValueError("cannot transfer to the same party that made the payment")
+
+        if has_party and self.bank_id is not None:
+            raise ValueError("bank cannot be set when transferring part of this payment to a vendor")
+        if not has_party and self.bank_id is None:
+            raise ValueError("bank is required unless transferring part of this payment to a vendor")
         return self
 
 
@@ -53,6 +64,7 @@ class PaymentOut(BaseModel):
     status: DocStatus
     transfer_to_party_id: int | None
     transfer_amount: Decimal | None
+    bank_id: int | None
     created_by: int
     cancelled_by: int | None
     cancelled_at: datetime | None

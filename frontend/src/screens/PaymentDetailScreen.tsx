@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import AttachmentPanel from "../components/AttachmentPanel";
 import CancelDialog from "../components/CancelDialog";
 import { useAuth } from "../auth/AuthContext";
-import { ApiError, api, type Payment } from "../lib/api";
+import { ApiError, api, type Bank, type Payment } from "../lib/api";
 import { formatDisplayDate } from "../lib/dates";
 import { usePartyMap } from "../lib/useEntityMaps";
 import { formatAmount } from "../lib/money";
@@ -24,6 +24,12 @@ export default function PaymentDetailScreen() {
   const { data: payment, isLoading } = useQuery({
     queryKey: ["payments", "detail", id],
     queryFn: () => api.get<Payment>(`/payments/${id}`),
+  });
+
+  const { data: bank } = useQuery({
+    queryKey: ["banks", "detail", payment?.bank_id],
+    queryFn: () => api.get<Bank>(`/banks/${payment!.bank_id}`),
+    enabled: payment?.bank_id != null,
   });
 
   async function handleCancel(reason: string) {
@@ -98,6 +104,12 @@ export default function PaymentDetailScreen() {
               <tr className="border-b border-neutral-100">
                 <td className="px-4 py-2 text-neutral-600">Reference</td>
                 <td className="px-4 py-2 text-right">{payment.reference_no}</td>
+              </tr>
+            )}
+            {payment.bank_id && (
+              <tr className="border-b border-neutral-100">
+                <td className="px-4 py-2 text-neutral-600">Bank</td>
+                <td className="px-4 py-2 text-right">{bank?.name ?? `Bank #${payment.bank_id}`}</td>
               </tr>
             )}
             <tr className={payment.transfer_to_party_id ? "border-b border-neutral-100" : ""}>

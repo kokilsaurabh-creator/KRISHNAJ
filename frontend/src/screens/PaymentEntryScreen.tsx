@@ -1,10 +1,10 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
 import AttachmentPanel from "../components/AttachmentPanel";
 import PartyPicker from "../components/PartyPicker";
-import { ApiError, PAYMENT_MODES, api, type Party, type Payment, type PaymentDirection } from "../lib/api";
+import { ApiError, PAYMENT_MODES, api, type Bank, type Party, type Payment, type PaymentDirection } from "../lib/api";
 import { formatDisplayDate } from "../lib/dates";
 import { compareAmounts, formatAmount, isValidDecimal } from "../lib/money";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
@@ -32,9 +32,15 @@ export default function PaymentEntryScreen() {
   const [transferEnabled, setTransferEnabled] = useState(false);
   const [transferParty, setTransferParty] = useState<Party | null>(null);
   const [transferAmount, setTransferAmount] = useState("");
+  const [bankId, setBankId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<Payment | null>(null);
+
+  const { data: banks } = useQuery({
+    queryKey: ["banks", "active"],
+    queryFn: () => api.get<Bank[]>("/banks?active=true"),
+  });
 
   const amountValid = isValidDecimal(amount, 2) && compareAmounts(amount, "0") > 0;
   // Only a receipt from a customer can be split off to a vendor — the
@@ -46,8 +52,18 @@ export default function PaymentEntryScreen() {
     compareAmounts(transferAmount, "0") > 0 &&
     (!amountValid || compareAmounts(transferAmount, amount) <= 0);
   const transferValid = !transferActive || (transferParty !== null && transferAmountValid);
+  // Bank is mandatory for a plain payment and not applicable to a
+  // transfer — mirrors PaymentWrite's own validator exactly.
+  const bankValid = transferActive || bankId !== null;
   const canSave =
-    party !== null && paymentDate !== "" && amountValid && mode.trim() !== "" && transferValid && !saving && online;
+    party !== null &&
+    paymentDate !== "" &&
+    amountValid &&
+    mode.trim() !== "" &&
+    transferValid &&
+    bankValid &&
+    !saving &&
+    online;
 
   function resetForm() {
     setParty(null);
@@ -60,6 +76,7 @@ export default function PaymentEntryScreen() {
     setTransferEnabled(false);
     setTransferParty(null);
     setTransferAmount("");
+    setBankId(null);
     setSaved(null);
     setError(null);
   }
@@ -80,7 +97,7 @@ export default function PaymentEntryScreen() {
         narration: narration.trim() === "" ? null : narration.trim(),
         ...(transferActive && transferParty
           ? { transfer_to_party_id: transferParty.id, transfer_amount: transferAmount }
-          : {}),
+          : { bank_id: bankId }),
       });
       setSaved(payment);
       void queryClient.invalidateQueries({ queryKey: ["ledger"] });
@@ -121,6 +138,14 @@ export default function PaymentEntryScreen() {
                 <tr className="border-b border-neutral-100">
                   <td className="px-4 py-2 text-neutral-600">Reference</td>
                   <td className="px-4 py-2 text-right">{saved.reference_no}</td>
+                </tr>
+              )}
+              {saved.bank_id && (
+                <tr className="border-b border-neutral-100">
+                  <td className="px-4 py-2 text-neutral-600">Bank</td>
+                  <td className="px-4 py-2 text-right">
+                    {banks?.find((b) => b.id === saved.bank_id)?.name ?? "—"}
+                  </td>
                 </tr>
               )}
               <tr className={saved.transfer_to_party_id ? "border-b border-neutral-100" : ""}>
@@ -249,6 +274,29 @@ export default function PaymentEntryScreen() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {!transferActive && (
+          <div>
+            <label htmlFor="payment-bank" className="mb-1.5 block text-sm font-medium text-neutral-700">
+              Bank
+            </label>
+            <select
+              id="payment-bank"
+              className="field"
+              value={bankId ?? ""}
+              onChange={(e) => setBankId(e.target.value === "" ? null : Number(e.target.value))}
+              required
+            >
+              <option value="">Select a bank</option>
+              {(banks ?? []).map((bank) => (
+                <option key={bank.id} value={bank.id}>
+                  {bank.name}
+                  {bank.account_number ? ` · ${bank.account_number}` : ""}
+                </option>
+              ))}
+            </select>
           </div>
         )}
 

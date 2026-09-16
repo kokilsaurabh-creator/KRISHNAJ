@@ -1,4 +1,5 @@
 import {
+  IconBuildingBank,
   IconCash,
   IconDiamond,
   IconLogout,
@@ -194,7 +195,7 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <Link to="/parties" className="btn-secondary gap-2">
           <IconUsers size={18} stroke={1.75} />
           Parties
@@ -202,6 +203,10 @@ export default function HomeScreen() {
         <Link to="/products" className="btn-secondary gap-2">
           <IconDiamond size={18} stroke={1.75} />
           Products
+        </Link>
+        <Link to="/banks" className="btn-secondary gap-2">
+          <IconBuildingBank size={18} stroke={1.75} />
+          Banks
         </Link>
       </div>
     </div>

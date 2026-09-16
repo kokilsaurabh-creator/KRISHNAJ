@@ -2,8 +2,8 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { useAuth } from "./auth/AuthContext";
 import AppShell from "./components/AppShell";
+import BanksScreen from "./screens/BanksScreen";
 import HomeScreen from "./screens/HomeScreen";
-import LedgerScreen from "./screens/LedgerScreen";
 import LoginScreen from "./screens/LoginScreen";
 import PartiesScreen from "./screens/PartiesScreen";
 import PaymentDetailScreen from "./screens/PaymentDetailScreen";
@@ -13,6 +13,7 @@ import ProductsScreen from "./screens/ProductsScreen";
 import PurchaseDetailScreen from "./screens/PurchaseDetailScreen";
 import PurchaseEntryScreen from "./screens/PurchaseEntryScreen";
 import PurchaseListScreen from "./screens/PurchaseListScreen";
+import ReportsScreen from "./screens/ReportsScreen";
 import SaleDetailScreen from "./screens/SaleDetailScreen";
 import SalesEntryScreen from "./screens/SalesEntryScreen";
 import SalesListScreen from "./screens/SalesListScreen";
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="dashboard" element={<Navigate to="/" replace />} />
         <Route path="parties" element={<PartiesScreen />} />
         <Route path="products" element={<ProductsScreen />} />
+        <Route path="banks" element={<BanksScreen />} />
         <Route path="sales" element={<SalesListScreen />} />
         <Route path="sales/new" element={<SalesEntryScreen />} />
         <Route path="sales/:id" element={<SaleDetailScreen />} />
@@ -53,7 +55,7 @@ export default function App() {
         <Route path="payments" element={<PaymentListScreen />} />
         <Route path="payments/new" element={<PaymentEntryScreen />} />
         <Route path="payments/:id" element={<PaymentDetailScreen />} />
-        <Route path="ledger" element={<LedgerScreen />} />
+        <Route path="ledger" element={<ReportsScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

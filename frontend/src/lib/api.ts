@@ -144,6 +144,42 @@ export type Ledger = {
   closing: string;
 };
 
+export type Bank = {
+  id: number;
+  name: string;
+  account_number: string | null;
+  branch: string | null;
+  is_active: boolean;
+  created_by: number;
+  created_at: string;
+};
+
+export type BankLedgerRow = {
+  date: string;
+  type: LedgerTxnType;
+  doc_no: string | null;
+  narration: string | null;
+  debit: string;
+  credit: string;
+  balance: string;
+};
+
+export type BankLedger = {
+  bank: {
+    id: number;
+    name: string;
+    account_number: string | null;
+    branch: string | null;
+  };
+  from_date: string;
+  to_date: string;
+  opening: string;
+  rows: BankLedgerRow[];
+  total_debit: string;
+  total_credit: string;
+  closing: string;
+};
+
 export type Product = {
   id: number;
   code: string;
@@ -228,6 +264,7 @@ export type Payment = {
   status: DocStatus;
   transfer_to_party_id: number | null;
   transfer_amount: string | null;
+  bank_id: number | null;
   created_by: number;
   cancelled_by: number | null;
   cancelled_at: string | null;

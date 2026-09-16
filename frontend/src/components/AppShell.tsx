@@ -12,7 +12,7 @@ const TABS: { to: string; label: string; end: boolean; icon: Icon }[] = [
   { to: "/sales", label: "Sales", end: false, icon: IconReceipt },
   { to: "/purchases", label: "Purchase", end: false, icon: IconTruckDelivery },
   { to: "/payments", label: "Payment", end: false, icon: IconCash },
-  { to: "/ledger", label: "Ledger", end: false, icon: IconBook },
+  { to: "/ledger", label: "Reports", end: false, icon: IconBook },
 ];
 
 export default function AppShell() {
