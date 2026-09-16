@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import { api, type Party, type Product } from "./api";
+import { api, type Bank, type Party, type Product } from "./api";
 
 /** id -> name for every party, active or not — a cancelled document can
  * reference a party that's since been deactivated, and it should still
@@ -24,4 +24,13 @@ export function useProductMap(): Map<number, Product> {
     staleTime: 60_000,
   });
   return useMemo(() => new Map((data ?? []).map((p) => [p.id, p])), [data]);
+}
+
+export function useBankMap(): Map<number, Bank> {
+  const { data } = useQuery({
+    queryKey: ["banks", "all"],
+    queryFn: () => api.get<Bank[]>("/banks"),
+    staleTime: 60_000,
+  });
+  return useMemo(() => new Map((data ?? []).map((b) => [b.id, b])), [data]);
 }

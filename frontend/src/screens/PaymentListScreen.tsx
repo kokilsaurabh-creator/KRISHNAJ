@@ -6,7 +6,7 @@ import DateRangePicker from "../components/DateRangePicker";
 import PartyPicker from "../components/PartyPicker";
 import { api, type Party, type Payment } from "../lib/api";
 import { formatDisplayDate, thisFY, type DateRange, type PresetKey } from "../lib/dates";
-import { usePartyMap } from "../lib/useEntityMaps";
+import { useBankMap, usePartyMap } from "../lib/useEntityMaps";
 import { formatAmount } from "../lib/money";
 
 export default function PaymentListScreen() {
@@ -14,6 +14,7 @@ export default function PaymentListScreen() {
   const [preset, setPreset] = useState<PresetKey>("this_fy");
   const [range, setRange] = useState<DateRange>(() => thisFY());
   const partyMap = usePartyMap();
+  const bankMap = useBankMap();
 
   const validRange = range.from !== "" && range.to !== "" && range.from <= range.to;
 
@@ -96,6 +97,7 @@ export default function PaymentListScreen() {
                     <p className="truncate text-sm text-neutral-600">
                       {payment.direction === "in" ? "Received" : "Paid"} · {payment.voucher_no} ·{" "}
                       {formatDisplayDate(payment.payment_date)}
+                      {payment.bank_id && ` · ${bankMap.get(payment.bank_id)?.name ?? "Bank"}`}
                     </p>
                   </div>
                   <span
