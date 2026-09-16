@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import DateRangePicker from "../components/DateRangePicker";
 import PartyPicker from "../components/PartyPicker";
-import { api, TXN_TYPE_LABELS, type Ledger, type LedgerRow, type Party } from "../lib/api";
+import { api, TXN_TYPE_LABELS, type Ledger, type LedgerRow, type Party, type Payment, type Purchase, type Sale } from "../lib/api";
 import { formatDisplayDate, thisFY, type DateRange, type PresetKey } from "../lib/dates";
 import { downloadLedgerPdf } from "../lib/ledgerPdf";
 import { absoluteAmount, balanceMarker, formatAmount, isNegative } from "../lib/money";
@@ -37,7 +38,61 @@ function typeClass(type: LedgerRow["type"]): string {
   return type === "receipt" || type === "payment" ? "text-peacock" : "text-neutral-700";
 }
 
+/** Ledger rows don't carry the source document's own id — only its
+ * doc_no. Resolving a row to a detail-view route means matching doc_no
+ * against the same list endpoints the list screens use, rather than any
+ * new backend surface. Payments deliberately aren't filtered by this
+ * ledger's party: a "transfer part of this to a vendor" payment posts
+ * its second leg to the vendor's ledger under the *customer's* payment
+ * row, so matching by voucher_no across the date range (globally unique)
+ * is what makes that leg resolve correctly too. */
+function useDocumentRouter(party: Party | null, range: DateRange, validRange: boolean) {
+  const enabled = party !== null && validRange;
+
+  const { data: sales } = useQuery({
+    queryKey: ["sales", "list", party?.id, range.from, range.to],
+    queryFn: () => api.get<Sale[]>(`/sales?party_id=${party!.id}&from=${range.from}&to=${range.to}`),
+    enabled,
+  });
+  const { data: purchases } = useQuery({
+    queryKey: ["purchases", "list", party?.id, range.from, range.to],
+    queryFn: () => api.get<Purchase[]>(`/purchases?party_id=${party!.id}&from=${range.from}&to=${range.to}`),
+    enabled,
+  });
+  const { data: payments } = useQuery({
+    queryKey: ["payments", "list", "byRange", range.from, range.to],
+    queryFn: () => api.get<Payment[]>(`/payments?from=${range.from}&to=${range.to}`),
+    enabled,
+  });
+
+  const salesByDocNo = useMemo(() => new Map((sales ?? []).map((s) => [s.invoice_no, s.id])), [sales]);
+  const purchasesByDocNo = useMemo(() => new Map((purchases ?? []).map((p) => [p.bill_no, p.id])), [purchases]);
+  const paymentsByDocNo = useMemo(() => new Map((payments ?? []).map((p) => [p.voucher_no, p.id])), [payments]);
+
+  return function detailPathForRow(row: LedgerRow): string | null {
+    if (!row.doc_no) return null;
+    switch (row.type) {
+      case "sale": {
+        const id = salesByDocNo.get(row.doc_no);
+        return id !== undefined ? `/sales/${id}` : null;
+      }
+      case "purchase": {
+        const id = purchasesByDocNo.get(row.doc_no);
+        return id !== undefined ? `/purchases/${id}` : null;
+      }
+      case "receipt":
+      case "payment": {
+        const id = paymentsByDocNo.get(row.doc_no);
+        return id !== undefined ? `/payments/${id}` : null;
+      }
+      default:
+        return null;
+    }
+  };
+}
+
 export default function LedgerScreen() {
+  const navigate = useNavigate();
   const [party, setParty] = useState<Party | null>(null);
   const [preset, setPreset] = useState<PresetKey>("this_fy");
   const [range, setRange] = useState<DateRange>(() => thisFY());
@@ -52,6 +107,8 @@ export default function LedgerScreen() {
       api.get<Ledger>(`/ledger/${party!.id}?from=${range.from}&to=${range.to}`),
     enabled: party !== null && validRange,
   });
+
+  const detailPathForRow = useDocumentRouter(party, range, validRange);
 
   return (
     <div className="space-y-5">
@@ -160,27 +217,34 @@ export default function LedgerScreen() {
             <>
               {/* Cards on mobile */}
               <ul className="space-y-3 sm:hidden">
-                {data.rows.map((row, index) => (
-                  <li key={`${row.doc_no ?? row.type}-${index}`} className="rounded-xl border border-neutral-200 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className={`text-sm font-medium ${typeClass(row.type)}`}>{TXN_TYPE_LABELS[row.type]}</p>
-                        <p className="text-xs text-neutral-500">
-                          {formatDisplayDate(row.date)}
-                          {row.doc_no ? ` · ${row.doc_no}` : ""}
+                {data.rows.map((row, index) => {
+                  const path = detailPathForRow(row);
+                  return (
+                    <li
+                      key={`${row.doc_no ?? row.type}-${index}`}
+                      onClick={path ? () => navigate(path) : undefined}
+                      className={`rounded-xl border border-neutral-200 p-3 ${path ? "cursor-pointer transition hover:border-teal hover:bg-teal-wash/40" : ""}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className={`text-sm font-medium ${typeClass(row.type)}`}>{TXN_TYPE_LABELS[row.type]}</p>
+                          <p className="text-xs text-neutral-500">
+                            {formatDisplayDate(row.date)}
+                            {row.doc_no ? ` · ${row.doc_no}` : ""}
+                          </p>
+                        </div>
+                        <p className="amount shrink-0 text-right text-base font-semibold text-neutral-900">
+                          {row.debit !== "0.00" ? `+${formatAmount(row.debit)}` : `−${formatAmount(row.credit)}`}
                         </p>
                       </div>
-                      <p className="amount shrink-0 text-right text-base font-semibold text-neutral-900">
-                        {row.debit !== "0.00" ? `+${formatAmount(row.debit)}` : `−${formatAmount(row.credit)}`}
-                      </p>
-                    </div>
-                    {row.narration && <p className="mt-1.5 text-sm text-neutral-600">{row.narration}</p>}
-                    <div className="mt-2 flex items-center justify-between border-t border-neutral-100 pt-2">
-                      <span className="text-xs text-neutral-500">Balance</span>
-                      <BalanceText value={row.balance} className="text-sm font-medium" />
-                    </div>
-                  </li>
-                ))}
+                      {row.narration && <p className="mt-1.5 text-sm text-neutral-600">{row.narration}</p>}
+                      <div className="mt-2 flex items-center justify-between border-t border-neutral-100 pt-2">
+                        <span className="text-xs text-neutral-500">Balance</span>
+                        <BalanceText value={row.balance} className="text-sm font-medium" />
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
 
               {/* Table on desktop */}
@@ -210,25 +274,34 @@ export default function LedgerScreen() {
                       </td>
                     </tr>
 
-                    {data.rows.map((row, index) => (
-                      <tr key={`${row.doc_no ?? row.type}-${index}`} className="border-b border-neutral-100">
-                        <td className="py-2 pr-3 whitespace-nowrap text-neutral-600">{formatDisplayDate(row.date)}</td>
-                        <td className={`py-2 pr-3 whitespace-nowrap font-medium ${typeClass(row.type)}`}>
-                          {TXN_TYPE_LABELS[row.type]}
-                        </td>
-                        <td className="py-2 pr-3 whitespace-nowrap text-neutral-600">{row.doc_no ?? "—"}</td>
-                        <td className="py-2 pr-3 text-neutral-600">{row.narration ?? ""}</td>
-                        <td className="amount py-2 pl-3 text-right text-neutral-900">
-                          {row.debit === "0.00" ? "" : formatAmount(row.debit)}
-                        </td>
-                        <td className="amount py-2 pl-3 text-right text-neutral-900">
-                          {row.credit === "0.00" ? "" : formatAmount(row.credit)}
-                        </td>
-                        <td className="py-2 pl-3 text-right">
-                          <BalanceText value={row.balance} />
-                        </td>
-                      </tr>
-                    ))}
+                    {data.rows.map((row, index) => {
+                      const path = detailPathForRow(row);
+                      return (
+                        <tr
+                          key={`${row.doc_no ?? row.type}-${index}`}
+                          onClick={path ? () => navigate(path) : undefined}
+                          className={`border-b border-neutral-100 ${path ? "cursor-pointer hover:bg-teal-wash/40" : ""}`}
+                        >
+                          <td className="py-2 pr-3 whitespace-nowrap text-neutral-600">{formatDisplayDate(row.date)}</td>
+                          <td className={`py-2 pr-3 whitespace-nowrap font-medium ${typeClass(row.type)}`}>
+                            {TXN_TYPE_LABELS[row.type]}
+                          </td>
+                          <td className="py-2 pr-3 whitespace-nowrap text-neutral-600">
+                            {path ? <span className="text-peacock underline-offset-2 hover:underline">{row.doc_no}</span> : (row.doc_no ?? "—")}
+                          </td>
+                          <td className="py-2 pr-3 text-neutral-600">{row.narration ?? ""}</td>
+                          <td className="amount py-2 pl-3 text-right text-neutral-900">
+                            {row.debit === "0.00" ? "" : formatAmount(row.debit)}
+                          </td>
+                          <td className="amount py-2 pl-3 text-right text-neutral-900">
+                            {row.credit === "0.00" ? "" : formatAmount(row.credit)}
+                          </td>
+                          <td className="py-2 pl-3 text-right">
+                            <BalanceText value={row.balance} />
+                          </td>
+                        </tr>
+                      );
+                    })}
 
                     <tr className="border-t-2 border-neutral-300">
                       <td className="py-2 pr-3 font-medium text-neutral-700" colSpan={4}>

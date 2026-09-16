@@ -6,10 +6,16 @@ import HomeScreen from "./screens/HomeScreen";
 import LedgerScreen from "./screens/LedgerScreen";
 import LoginScreen from "./screens/LoginScreen";
 import PartiesScreen from "./screens/PartiesScreen";
+import PaymentDetailScreen from "./screens/PaymentDetailScreen";
 import PaymentEntryScreen from "./screens/PaymentEntryScreen";
+import PaymentListScreen from "./screens/PaymentListScreen";
 import ProductsScreen from "./screens/ProductsScreen";
+import PurchaseDetailScreen from "./screens/PurchaseDetailScreen";
 import PurchaseEntryScreen from "./screens/PurchaseEntryScreen";
+import PurchaseListScreen from "./screens/PurchaseListScreen";
+import SaleDetailScreen from "./screens/SaleDetailScreen";
 import SalesEntryScreen from "./screens/SalesEntryScreen";
+import SalesListScreen from "./screens/SalesListScreen";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -38,9 +44,15 @@ export default function App() {
         <Route path="dashboard" element={<Navigate to="/" replace />} />
         <Route path="parties" element={<PartiesScreen />} />
         <Route path="products" element={<ProductsScreen />} />
-        <Route path="sales" element={<SalesEntryScreen />} />
-        <Route path="purchases" element={<PurchaseEntryScreen />} />
-        <Route path="payments" element={<PaymentEntryScreen />} />
+        <Route path="sales" element={<SalesListScreen />} />
+        <Route path="sales/new" element={<SalesEntryScreen />} />
+        <Route path="sales/:id" element={<SaleDetailScreen />} />
+        <Route path="purchases" element={<PurchaseListScreen />} />
+        <Route path="purchases/new" element={<PurchaseEntryScreen />} />
+        <Route path="purchases/:id" element={<PurchaseDetailScreen />} />
+        <Route path="payments" element={<PaymentListScreen />} />
+        <Route path="payments/new" element={<PaymentEntryScreen />} />
+        <Route path="payments/:id" element={<PaymentDetailScreen />} />
         <Route path="ledger" element={<LedgerScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

@@ -176,6 +176,12 @@ export type Sale = {
   net_amount: string;
   narration: string | null;
   status: DocStatus;
+  created_by: number;
+  cancelled_by: number | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
+  created_at: string;
+  updated_at: string;
   lines: SaleLine[];
 };
 
@@ -198,6 +204,12 @@ export type Purchase = {
   net_amount: string;
   narration: string | null;
   status: DocStatus;
+  created_by: number;
+  cancelled_by: number | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
+  created_at: string;
+  updated_at: string;
   lines: PurchaseLine[];
 };
 
@@ -216,6 +228,12 @@ export type Payment = {
   status: DocStatus;
   transfer_to_party_id: number | null;
   transfer_amount: string | null;
+  created_by: number;
+  cancelled_by: number | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Attachment = {

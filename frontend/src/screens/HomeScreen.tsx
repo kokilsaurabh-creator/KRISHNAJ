@@ -30,9 +30,9 @@ function todayLabel(): string {
 }
 
 const QUICK_ENTRY: { to: string; label: string; icon: Icon; tint: string }[] = [
-  { to: "/sales", label: "New sale", icon: IconReceipt, tint: "bg-teal-wash text-teal" },
-  { to: "/purchases", label: "New purchase", icon: IconTruckDelivery, tint: "bg-peacock/10 text-peacock" },
-  { to: "/payments", label: "New payment", icon: IconCash, tint: "bg-gold/10 text-gold" },
+  { to: "/sales/new", label: "New sale", icon: IconReceipt, tint: "bg-teal-wash text-teal" },
+  { to: "/purchases/new", label: "New purchase", icon: IconTruckDelivery, tint: "bg-peacock/10 text-peacock" },
+  { to: "/payments/new", label: "New payment", icon: IconCash, tint: "bg-gold/10 text-gold" },
 ];
 
 const ACTIVITY_ICON: Record<ActivityType, { icon: Icon; tint: string }> = {
@@ -47,33 +47,44 @@ const ACTIVITY_LABEL: Record<ActivityType, string> = {
   payment: "Payment",
 };
 
+const ACTIVITY_ROUTE: Record<ActivityType, string> = {
+  sale: "sales",
+  purchase: "purchases",
+  payment: "payments",
+};
+
 function ActivityRow({ item }: { item: ActivityItem }) {
   const { icon: RowIcon, tint } = ACTIVITY_ICON[item.type];
   const cancelled = item.status === "cancelled";
 
   return (
-    <li className="flex items-center gap-3 px-4 py-3">
-      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tint}`}>
-        <RowIcon size={18} stroke={1.75} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="truncate font-medium text-neutral-900">{item.party_name}</p>
-          {cancelled && (
-            <span className="shrink-0 rounded-full border border-danger/30 bg-danger/5 px-2 py-0.5 text-xs font-medium text-danger">
-              Cancelled
-            </span>
-          )}
-        </div>
-        <p className="truncate text-sm text-neutral-600">
-          {ACTIVITY_LABEL[item.type]} · {formatDisplayDate(item.txn_date)}
-        </p>
-      </div>
-      <span
-        className={`amount shrink-0 text-sm font-medium ${cancelled ? "text-neutral-400 line-through" : "text-neutral-900"}`}
+    <li>
+      <Link
+        to={`/${ACTIVITY_ROUTE[item.type]}/${item.id}`}
+        className="flex items-center gap-3 px-4 py-3 transition hover:bg-teal-wash/40"
       >
-        {formatCurrencyTrim(item.amount)}
-      </span>
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tint}`}>
+          <RowIcon size={18} stroke={1.75} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="truncate font-medium text-neutral-900">{item.party_name}</p>
+            {cancelled && (
+              <span className="shrink-0 rounded-full border border-danger/30 bg-danger/5 px-2 py-0.5 text-xs font-medium text-danger">
+                Cancelled
+              </span>
+            )}
+          </div>
+          <p className="truncate text-sm text-neutral-600">
+            {ACTIVITY_LABEL[item.type]} · {formatDisplayDate(item.txn_date)}
+          </p>
+        </div>
+        <span
+          className={`amount shrink-0 text-sm font-medium ${cancelled ? "text-neutral-400 line-through" : "text-neutral-900"}`}
+        >
+          {formatCurrencyTrim(item.amount)}
+        </span>
+      </Link>
     </li>
   );
 }
