@@ -95,8 +95,7 @@ export default function PaymentListScreen() {
                       )}
                     </div>
                     <p className="truncate text-sm text-neutral-600">
-                      {payment.direction === "in" ? "Received" : "Paid"} · {payment.voucher_no} ·{" "}
-                      {formatDisplayDate(payment.payment_date)}
+                      {payment.direction === "in" ? "Received" : "Paid"} · {formatDisplayDate(payment.payment_date)}
                       {payment.bank_id && ` · ${bankMap.get(payment.bank_id)?.name ?? "Bank"}`}
                     </p>
                   </div>
