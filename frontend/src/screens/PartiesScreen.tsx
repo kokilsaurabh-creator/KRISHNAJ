@@ -2,7 +2,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 
 import { useAuth } from "../auth/AuthContext";
-import { ApiError, api, type Party } from "../lib/api";
+import { ApiError, api, type Ledger, type Party } from "../lib/api";
+import { formatBalance, isValidDecimal } from "../lib/money";
+
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 const TYPE_FILTERS: { value: Party["party_type"] | "all"; label: string }[] = [
   { value: "all", label: "All" },
@@ -22,6 +28,9 @@ type FormState = {
   pincode: string;
   notes: string;
   is_active: boolean;
+  // Admin-only; blank means "don't touch the existing opening balance".
+  opening_balance: string;
+  opening_balance_date: string;
 };
 
 function blankForm(): FormState {
@@ -36,6 +45,8 @@ function blankForm(): FormState {
     pincode: "",
     notes: "",
     is_active: true,
+    opening_balance: "",
+    opening_balance_date: todayIso(),
   };
 }
 
@@ -51,11 +62,14 @@ function toForm(party: Party): FormState {
     pincode: party.pincode ?? "",
     notes: party.notes ?? "",
     is_active: party.is_active,
+    opening_balance: "",
+    opening_balance_date: todayIso(),
   };
 }
 
 export default function PartiesScreen() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const canEdit = can("edit_masters");
   const queryClient = useQueryClient();
 
@@ -79,6 +93,19 @@ export default function PartiesScreen() {
     },
   });
 
+  const editingId = editing !== null && editing !== "new" ? editing.id : null;
+  const { data: currentOpening } = useQuery({
+    queryKey: ["parties", "opening", editingId],
+    queryFn: async () => {
+      const ledger = await api.get<Ledger>(`/ledger/${editingId}?from=1900-01-01&to=2100-12-31`);
+      const row = ledger.rows.find((r) => r.type === "opening");
+      if (!row) return null;
+      return { amount: (Number(row.debit) - Number(row.credit)).toFixed(2), date: row.date };
+    },
+    enabled: isAdmin && editingId !== null,
+  });
+  const openingValid = form.opening_balance.trim() === "" || isValidDecimal(form.opening_balance, 2);
+
   function openNew() {
     setForm(blankForm());
     setError(null);
@@ -98,7 +125,7 @@ export default function PartiesScreen() {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (form.name.trim() === "") return;
+    if (form.name.trim() === "" || !openingValid) return;
     setSaving(true);
     setError(null);
     const body = {
@@ -113,10 +140,23 @@ export default function PartiesScreen() {
       notes: form.notes.trim() || null,
     };
     try {
+      let partyId: number;
       if (editing === "new") {
-        await api.postJson<Party>("/parties", body);
+        partyId = (await api.postJson<Party>("/parties", body)).id;
       } else if (editing) {
         await api.patchJson<Party>(`/parties/${editing.id}`, { ...body, is_active: form.is_active });
+        partyId = editing.id;
+      } else {
+        return;
+      }
+      // Blank = leave any existing opening balance alone; the endpoint
+      // replaces rather than adds, so a zero here would wipe it.
+      if (isAdmin && form.opening_balance.trim() !== "") {
+        await api.postJson(`/parties/${partyId}/opening-balance`, {
+          as_of_date: form.opening_balance_date,
+          amount: form.opening_balance.trim(),
+        });
+        void queryClient.invalidateQueries({ queryKey: ["ledger"] });
       }
       void queryClient.invalidateQueries({ queryKey: ["parties"] });
       setEditing(null);
@@ -265,6 +305,46 @@ export default function PartiesScreen() {
             />
           </div>
 
+          {isAdmin && (
+            <div className="space-y-3 rounded-lg border border-neutral-200 p-3">
+              <p className="text-sm font-medium text-neutral-700">Opening balance</p>
+              {!isNew && currentOpening && (
+                <p className="text-sm text-neutral-600">
+                  Currently {formatBalance(currentOpening.amount)} as on {currentOpening.date}
+                </p>
+              )}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="party-opening-date" className="mb-1.5 block text-sm font-medium text-neutral-700">
+                    As on
+                  </label>
+                  <input
+                    id="party-opening-date"
+                    type="date"
+                    className="field"
+                    value={form.opening_balance_date}
+                    onChange={(e) => setForm((f) => ({ ...f, opening_balance_date: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="party-opening-amount" className="mb-1.5 block text-sm font-medium text-neutral-700">
+                    Amount <span className="font-normal text-neutral-500">(blank = no change)</span>
+                  </label>
+                  <input
+                    id="party-opening-amount"
+                    className="field amount text-right"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={form.opening_balance}
+                    onChange={(e) => setForm((f) => ({ ...f, opening_balance: e.target.value }))}
+                  />
+                  {!openingValid && <p className="mt-1 text-xs text-danger">Enter a valid amount.</p>}
+                </div>
+              </div>
+              <p className="text-xs text-neutral-500">Positive = they owe you. Negative = you owe them.</p>
+            </div>
+          )}
+
           {!isNew && (
             <label className="flex min-h-[44px] items-center gap-2 text-sm text-neutral-700">
               <input
@@ -285,7 +365,7 @@ export default function PartiesScreen() {
         )}
 
         <div className="flex flex-wrap gap-3">
-          <button type="submit" className="btn-primary" disabled={saving || form.name.trim() === ""}>
+          <button type="submit" className="btn-primary" disabled={saving || form.name.trim() === "" || !openingValid}>
             {saving ? "Saving…" : "Save party"}
           </button>
           <button type="button" className="btn-secondary" onClick={closeForm}>
