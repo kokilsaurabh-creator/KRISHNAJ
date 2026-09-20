@@ -239,6 +239,41 @@ async def test_bank_is_mandatory_unless_transferring_and_tracks_balance(
 
 
 @pytest.mark.asyncio
+async def test_knockoff_settles_balance_to_zero_and_cancel_restores_it(session, client, owner_user, party, bank):
+    headers = auth_headers(owner_user)
+    await client.post(
+        f"/parties/{party.id}/opening-balance",
+        json={"as_of_date": "2026-04-01", "amount": "1760.00"},
+        headers=headers,
+    )
+
+    body = _payment_body(party.id, direction="in", amount="1700.00", bank_id=bank.id)
+    body["knockoff_amount"] = "60.00"
+    body["knockoff_reason"] = "rounding"
+    create = await client.post("/payments", json=body, headers=headers)
+    assert create.status_code == 201
+    payment_id = create.json()["id"]
+
+    ledger_resp = await client.get(
+        f"/ledger/{party.id}", params={"from": "2026-04-02", "to": "2026-04-30"}, headers=headers
+    )
+    rows = ledger_resp.json()["rows"]
+    assert [r["type"] for r in rows] == ["receipt", "settlement_discount"]
+    assert [r["credit"] for r in rows] == ["1700.00", "60.00"]
+    assert ledger_resp.json()["closing"] == "0.00"
+
+    # No real money moved for the knockoff: the bank only sees the 1700.
+    bank_report = await bank_ledger.get_bank_ledger(session, bank.id, date(2026, 4, 5), date(2026, 4, 5))
+    assert bank_report.closing == Decimal("1700.00")
+
+    cancel = await client.post(f"/payments/{payment_id}/cancel", json={"reason": "test"}, headers=headers)
+    assert cancel.status_code == 200
+    restored = await ledger.get_ledger(session, party.id, date(2026, 4, 2), date(2026, 4, 30))
+    assert restored.rows == []
+    assert restored.closing == Decimal("1760.00")
+
+
+@pytest.mark.asyncio
 async def test_staff_gets_403_cancelling_a_payment(client, staff_user, owner_user, party, bank):
     create = await client.post(
         "/payments", json=_payment_body(party.id, bank_id=bank.id), headers=auth_headers(owner_user)

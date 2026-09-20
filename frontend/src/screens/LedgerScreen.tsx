@@ -35,7 +35,7 @@ function SummaryFigure({ label, value, sublabel }: { label: string; value: strin
 
 /** Receipts and payments read peacock; sales and purchases stay neutral. */
 function typeClass(type: LedgerRow["type"]): string {
-  return type === "receipt" || type === "payment" ? "text-peacock" : "text-neutral-700";
+  return type === "receipt" || type === "payment" || type === "settlement_discount" ? "text-peacock" : "text-neutral-700";
 }
 
 /** Ledger rows don't carry the source document's own id — only its
@@ -81,7 +81,8 @@ function useDocumentRouter(party: Party | null, range: DateRange, validRange: bo
         return id !== undefined ? `/purchases/${id}` : null;
       }
       case "receipt":
-      case "payment": {
+      case "payment":
+      case "settlement_discount": {
         const id = paymentsByDocNo.get(row.doc_no);
         return id !== undefined ? `/payments/${id}` : null;
       }

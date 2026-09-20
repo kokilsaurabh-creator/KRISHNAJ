@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import LedgerEntry, LedgerTxnType, Party, PartyType
@@ -334,6 +334,31 @@ async def get_ledger(
         total_credit=total_credit,
         closing=closing,
     )
+
+
+async def get_party_balance(
+    session: AsyncSession,
+    party_id: int,
+    *,
+    exclude_payment_id: int | None = None,
+) -> Decimal:
+    """SUM(debit) - SUM(credit) over the party's whole ledger (positive =
+    they owe us). exclude_payment_id leaves out that payment's own legs so
+    an edit can be validated against the balance as it stood before it.
+    """
+    stmt = select(func.coalesce(func.sum(LedgerEntry.debit - LedgerEntry.credit), 0)).where(
+        LedgerEntry.party_id == party_id
+    )
+    if exclude_payment_id is not None:
+        stmt = stmt.where(
+            or_(
+                LedgerEntry.source_table.is_(None),
+                LedgerEntry.source_table.not_in(["payments", "payment_knockoff"]),
+                LedgerEntry.source_id != exclude_payment_id,
+            )
+        )
+    result = await session.execute(stmt)
+    return _money(result.scalar_one(), field_name="balance")
 
 
 async def get_outstanding(

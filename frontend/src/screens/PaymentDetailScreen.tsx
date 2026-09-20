@@ -118,6 +118,14 @@ export default function PaymentDetailScreen() {
                 {formatAmount(payment.amount)}
               </td>
             </tr>
+            {payment.knockoff_amount && (
+              <tr className="border-t border-neutral-100">
+                <td className="px-4 py-2 text-neutral-600">
+                  Settlement discount{payment.knockoff_reason ? ` (${payment.knockoff_reason})` : ""}
+                </td>
+                <td className="amount px-4 py-2 text-right text-peacock">{formatAmount(payment.knockoff_amount)}</td>
+              </tr>
+            )}
             {payment.transfer_to_party_id && payment.transfer_amount && (
               <tr>
                 <td className="px-4 py-2 text-neutral-600">

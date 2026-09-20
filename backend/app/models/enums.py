@@ -29,3 +29,4 @@ class LedgerTxnType(str, enum.Enum):
     purchase = "purchase"
     receipt = "receipt"
     payment = "payment"
+    settlement_discount = "settlement_discount"

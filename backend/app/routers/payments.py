@@ -48,6 +48,7 @@ from app.services.doc_numbering import allocate_doc_number
 router = APIRouter(prefix="/payments", tags=["payments"], dependencies=[Depends(get_current_user)])
 
 TRANSFER_SOURCE_TABLE = "payment_transfer"
+KNOCKOFF_SOURCE_TABLE = "payment_knockoff"
 
 
 def _txn_type_and_sign(direction: PaymentDirection, amount: Decimal) -> tuple[LedgerTxnType, Decimal, Decimal]:
@@ -90,6 +91,60 @@ async def _load_bank(session: AsyncSession, bank_id: int) -> Bank:
     if bank is None or not bank.is_active:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Bank not found or inactive")
     return bank
+
+
+async def _check_knockoff(
+    session: AsyncSession,
+    *,
+    party_id: int,
+    direction: PaymentDirection,
+    knockoff: Decimal,
+    exclude_payment_id: int | None,
+) -> None:
+    """A knockoff writes off part of what's owed, so it can't exceed what
+    is owed: the party's balance as it stood before this payment (for an
+    edit, with the payment's own legs taken out first). Receivable for a
+    receipt, payable for a payment out.
+    """
+    balance = await ledger.get_party_balance(session, party_id, exclude_payment_id=exclude_payment_id)
+    outstanding = balance if direction == PaymentDirection.IN else -balance
+    if knockoff > outstanding:
+        shown = max(outstanding, Decimal("0.00"))
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Knockoff can't exceed the outstanding balance (Rs {shown:,.2f})",
+        )
+
+
+async def _post_knockoff_leg(
+    session: AsyncSession,
+    *,
+    payment_id: int,
+    party_id: int,
+    direction: PaymentDirection,
+    knockoff: Decimal,
+    payment_date: date,
+    voucher_no: str,
+    reason: str | None,
+) -> None:
+    """Post (or replace) the settlement-discount line on the SAME party,
+    on the same side as the payment itself: a knockoff on a receipt is a
+    credit, on a payment out a debit. The bank ledger is deliberately not
+    involved — no money moved for this portion.
+    """
+    _, debit, credit = _txn_type_and_sign(direction, knockoff)
+    await ledger.repost_for_source(
+        session,
+        source_table=KNOCKOFF_SOURCE_TABLE,
+        source_id=payment_id,
+        party_id=party_id,
+        txn_date=payment_date,
+        txn_type=LedgerTxnType.settlement_discount,
+        doc_no=voucher_no,
+        debit=debit,
+        credit=credit,
+        narration=reason or "Settlement discount",
+    )
 
 
 async def _post_bank_leg(
@@ -170,6 +225,15 @@ async def create_payment(
     if body.bank_id is not None:
         bank = await _load_bank(session, body.bank_id)
 
+    if body.knockoff_amount is not None:
+        await _check_knockoff(
+            session,
+            party_id=body.party_id,
+            direction=body.direction,
+            knockoff=body.knockoff_amount,
+            exclude_payment_id=None,
+        )
+
     doc_type, prefix = _doc_type_and_prefix(body.direction)
     voucher_no = await allocate_doc_number(session, doc_type=doc_type, txn_date=body.payment_date, prefix=prefix)
 
@@ -185,6 +249,8 @@ async def create_payment(
         transfer_to_party_id=body.transfer_to_party_id,
         transfer_amount=body.transfer_amount,
         bank_id=body.bank_id,
+        knockoff_amount=body.knockoff_amount,
+        knockoff_reason=body.knockoff_reason,
         created_by=current_user.id,
     )
     session.add(payment)
@@ -220,6 +286,19 @@ async def create_payment(
             payment_date=body.payment_date,
             voucher_no=voucher_no,
             from_party_name=party.name,
+        )
+
+    # Settlement-discount line: same party, same side as leg 1.
+    if body.knockoff_amount is not None:
+        await _post_knockoff_leg(
+            session,
+            payment_id=payment.id,
+            party_id=body.party_id,
+            direction=body.direction,
+            knockoff=body.knockoff_amount,
+            payment_date=body.payment_date,
+            voucher_no=voucher_no,
+            reason=body.knockoff_reason,
         )
 
     # Bank leg, only if a bank was selected (mutually exclusive with the
@@ -301,6 +380,15 @@ async def update_payment(
     if body.bank_id is not None:
         bank = await _load_bank(session, body.bank_id)
 
+    if body.knockoff_amount is not None:
+        await _check_knockoff(
+            session,
+            party_id=body.party_id,
+            direction=body.direction,
+            knockoff=body.knockoff_amount,
+            exclude_payment_id=payment.id,
+        )
+
     payment.party_id = body.party_id
     payment.payment_date = body.payment_date
     payment.amount = body.amount
@@ -310,6 +398,8 @@ async def update_payment(
     payment.transfer_to_party_id = body.transfer_to_party_id
     payment.transfer_amount = body.transfer_amount
     payment.bank_id = body.bank_id
+    payment.knockoff_amount = body.knockoff_amount
+    payment.knockoff_reason = body.knockoff_reason
 
     txn_type, debit, credit = _txn_type_and_sign(body.direction, body.amount)
     await ledger.repost_for_source(
@@ -342,6 +432,20 @@ async def update_payment(
         )
     else:
         await ledger.remove_for_source(session, source_table=TRANSFER_SOURCE_TABLE, source_id=payment.id)
+
+    if body.knockoff_amount is not None:
+        await _post_knockoff_leg(
+            session,
+            payment_id=payment.id,
+            party_id=body.party_id,
+            direction=body.direction,
+            knockoff=body.knockoff_amount,
+            payment_date=body.payment_date,
+            voucher_no=payment.voucher_no,
+            reason=body.knockoff_reason,
+        )
+    else:
+        await ledger.remove_for_source(session, source_table=KNOCKOFF_SOURCE_TABLE, source_id=payment.id)
 
     # Same idea for the bank leg — reposted if a bank is (still, or newly)
     # selected, removed if it was cleared.
@@ -391,6 +495,7 @@ async def cancel_payment(
     # posted (a payment has at most one of transfer/bank), and removes
     # whichever one was. Either way every leg of this payment is gone.
     await ledger.remove_for_source(session, source_table=TRANSFER_SOURCE_TABLE, source_id=payment.id)
+    await ledger.remove_for_source(session, source_table=KNOCKOFF_SOURCE_TABLE, source_id=payment.id)
     await bank_ledger.remove_for_source(session, source_table="payments", source_id=payment.id)
 
     await session.commit()

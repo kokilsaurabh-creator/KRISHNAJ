@@ -285,7 +285,19 @@ class Payment(Base):
     # legitimate — both set on the same payment.
     bank_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("banks.id"))
 
+    # Residual knockoff: part of what the party owes is written off as a
+    # settlement discount instead of being paid. Posts a second party-ledger
+    # line (source_table 'payment_knockoff') in the same direction as the
+    # payment itself; no real money moves, so it never touches the bank
+    # ledger. Null when unused (never 0).
+    knockoff_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    knockoff_reason: Mapped[str | None] = mapped_column(Text)
+
     __table_args__ = (
+        CheckConstraint(
+            "knockoff_amount IS NULL OR knockoff_amount > 0",
+            name="ck_payments_knockoff_positive",
+        ),
         CheckConstraint("amount > 0", name="ck_payments_amount_positive"),
         CheckConstraint(
             "(transfer_to_party_id IS NULL) = (transfer_amount IS NULL)",

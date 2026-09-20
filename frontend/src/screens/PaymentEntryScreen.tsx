@@ -33,6 +33,8 @@ export default function PaymentEntryScreen() {
   const [transferParty, setTransferParty] = useState<Party | null>(null);
   const [transferAmount, setTransferAmount] = useState("");
   const [bankId, setBankId] = useState<number | null>(null);
+  const [knockoffAmount, setKnockoffAmount] = useState("");
+  const [knockoffReason, setKnockoffReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<Payment | null>(null);
@@ -55,6 +57,9 @@ export default function PaymentEntryScreen() {
   // Bank is mandatory for a plain payment and not applicable to a
   // transfer — mirrors PaymentWrite's own validator exactly.
   const bankValid = transferActive || bankId !== null;
+  const knockoffValid =
+    knockoffAmount.trim() === "" ||
+    (isValidDecimal(knockoffAmount, 2) && compareAmounts(knockoffAmount, "0") >= 0);
   const canSave =
     party !== null &&
     paymentDate !== "" &&
@@ -62,6 +67,7 @@ export default function PaymentEntryScreen() {
     mode.trim() !== "" &&
     transferValid &&
     bankValid &&
+    knockoffValid &&
     !saving &&
     online;
 
@@ -77,6 +83,8 @@ export default function PaymentEntryScreen() {
     setTransferParty(null);
     setTransferAmount("");
     setBankId(null);
+    setKnockoffAmount("");
+    setKnockoffReason("");
     setSaved(null);
     setError(null);
   }
@@ -95,6 +103,12 @@ export default function PaymentEntryScreen() {
         mode,
         reference_no: referenceNo.trim() === "" ? null : referenceNo.trim(),
         narration: narration.trim() === "" ? null : narration.trim(),
+        ...(knockoffAmount.trim() !== ""
+          ? {
+              knockoff_amount: knockoffAmount,
+              knockoff_reason: knockoffReason.trim() === "" ? null : knockoffReason.trim(),
+            }
+          : {}),
         ...(transferActive && transferParty
           ? { transfer_to_party_id: transferParty.id, transfer_amount: transferAmount }
           : { bank_id: bankId }),
@@ -154,6 +168,14 @@ export default function PaymentEntryScreen() {
                   {formatAmount(saved.amount)}
                 </td>
               </tr>
+              {saved.knockoff_amount && (
+                <tr className="border-t border-neutral-100">
+                  <td className="px-4 py-2 text-neutral-600">
+                    Settlement discount{saved.knockoff_reason ? ` (${saved.knockoff_reason})` : ""}
+                  </td>
+                  <td className="amount px-4 py-2 text-right text-peacock">{formatAmount(saved.knockoff_amount)}</td>
+                </tr>
+              )}
               {saved.transfer_to_party_id && saved.transfer_amount && (
                 <tr>
                   <td className="px-4 py-2 text-neutral-600">Transferred to {transferParty?.name ?? "vendor"}</td>
@@ -377,6 +399,35 @@ export default function PaymentEntryScreen() {
             onChange={(e) => setNarration(e.target.value)}
           />
         </div>
+
+        <div>
+          <label htmlFor="knockoff-amount" className="mb-1.5 block text-sm font-medium text-neutral-700">
+            Knockoff amount <span className="font-normal text-neutral-500">(optional)</span>
+          </label>
+          <input
+            id="knockoff-amount"
+            className="field amount"
+            inputMode="decimal"
+            value={knockoffAmount}
+            onChange={(e) => setKnockoffAmount(e.target.value)}
+          />
+          {!knockoffValid && <p className="mt-1 text-xs text-danger">Enter a valid amount</p>}
+        </div>
+
+        {knockoffAmount.trim() !== "" && (
+          <div>
+            <label htmlFor="knockoff-reason" className="mb-1.5 block text-sm font-medium text-neutral-700">
+              Reason <span className="font-normal text-neutral-500">(optional)</span>
+            </label>
+            <input
+              id="knockoff-reason"
+              className="field"
+              placeholder="e.g. rounding, goodwill discount"
+              value={knockoffReason}
+              onChange={(e) => setKnockoffReason(e.target.value)}
+            />
+          </div>
+        )}
       </section>
 
       {error && (

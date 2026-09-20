@@ -112,7 +112,7 @@ export type Party = {
   is_active: boolean;
 };
 
-export type LedgerTxnType = "opening" | "sale" | "purchase" | "receipt" | "payment";
+export type LedgerTxnType = "opening" | "sale" | "purchase" | "receipt" | "payment" | "settlement_discount";
 
 export type LedgerRow = {
   date: string;
@@ -266,6 +266,8 @@ export type Payment = {
   transfer_to_party_id: number | null;
   transfer_amount: string | null;
   bank_id: number | null;
+  knockoff_amount: string | null;
+  knockoff_reason: string | null;
   created_by: number;
   cancelled_by: number | null;
   cancelled_at: string | null;
@@ -315,4 +317,5 @@ export const TXN_TYPE_LABELS: Record<LedgerTxnType, string> = {
   purchase: "Purchase",
   receipt: "Receipt",
   payment: "Payment",
+  settlement_discount: "Settlement discount",
 };
