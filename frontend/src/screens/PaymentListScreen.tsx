@@ -5,14 +5,14 @@ import { Link } from "react-router-dom";
 import DateRangePicker from "../components/DateRangePicker";
 import PartyPicker from "../components/PartyPicker";
 import { api, type Party, type Payment } from "../lib/api";
-import { formatDisplayDate, thisFY, type DateRange, type PresetKey } from "../lib/dates";
+import { formatDisplayDate, thisMonth, type DateRange, type PresetKey } from "../lib/dates";
 import { useBankMap, usePartyMap } from "../lib/useEntityMaps";
 import { formatAmount } from "../lib/money";
 
 export default function PaymentListScreen() {
   const [party, setParty] = useState<Party | null>(null);
-  const [preset, setPreset] = useState<PresetKey>("this_fy");
-  const [range, setRange] = useState<DateRange>(() => thisFY());
+  const [preset, setPreset] = useState<PresetKey>("this_month");
+  const [range, setRange] = useState<DateRange>(() => thisMonth());
   const partyMap = usePartyMap();
   const bankMap = useBankMap();
 
