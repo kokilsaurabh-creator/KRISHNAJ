@@ -32,7 +32,7 @@ async def test_create_sale_computes_totals_and_posts_ledger(session, client, own
 
     assert resp.status_code == 201
     body = resp.json()
-    assert body["invoice_no"] == "KJ/2026-27/0001"
+    assert body["invoice_no"] == "1"
     assert body["gross_amount"] == "1500.00"
     assert body["discount"] == "100.00"
     assert body["net_amount"] == "1400.00"
@@ -69,8 +69,8 @@ async def test_sequential_sales_get_sequential_invoice_numbers(client, owner_use
     first = await client.post("/sales", json=_sale_body(party.id, product.id), headers=auth_headers(owner_user))
     second = await client.post("/sales", json=_sale_body(party.id, product.id), headers=auth_headers(owner_user))
 
-    assert first.json()["invoice_no"] == "KJ/2026-27/0001"
-    assert second.json()["invoice_no"] == "KJ/2026-27/0002"
+    assert first.json()["invoice_no"] == "1"
+    assert second.json()["invoice_no"] == "2"
 
 
 @pytest.mark.asyncio
@@ -190,3 +190,17 @@ async def test_owner_gets_200_cancelling_a_sale(client, owner_user, party, produ
         f"/sales/{sale_id}/cancel", json={"reason": "correcting entry"}, headers=auth_headers(owner_user)
     )
     assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_sales_numbering_starts_at_set_number_then_locks(client, owner_user, admin_user, party, product):
+    admin = auth_headers(admin_user)
+    assert (await client.put("/sales/numbering", json={"start_number": 867}, headers=admin)).status_code == 200
+
+    first = await client.post("/sales", json=_sale_body(party.id, product.id), headers=auth_headers(owner_user))
+    second = await client.post("/sales", json=_sale_body(party.id, product.id), headers=auth_headers(owner_user))
+    assert first.json()["invoice_no"] == "867"
+    assert second.json()["invoice_no"] == "868"
+
+    locked = await client.put("/sales/numbering", json={"start_number": 5000}, headers=admin)
+    assert locked.status_code == 409

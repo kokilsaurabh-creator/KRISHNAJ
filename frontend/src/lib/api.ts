@@ -71,6 +71,13 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  putJson: <T>(path: string, body: unknown) =>
+    request<T>(path, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
   /** /auth/login takes OAuth2 form encoding, not JSON. */
   postForm: <T>(path: string, fields: Record<string, string>) =>
     request<T>(path, {

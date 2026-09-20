@@ -25,6 +25,12 @@ from app.models import DocSequence
 
 _FY_START_MONTH = 4  # Indian financial year: April-March
 
+# Doc types numbered as one plain running number ("867", "868", ...) that
+# never resets: no prefix, no FY segment. They still live in doc_sequences,
+# under one fixed fy value instead of a per-year one.
+CONTINUOUS_DOC_TYPES = frozenset({"sale"})
+CONTINUOUS_FY = "ALL"
+
 
 def fiscal_year_for(d: date) -> str:
     """'2026-04-01' through '2027-03-31' -> '2026-27'."""
@@ -32,18 +38,9 @@ def fiscal_year_for(d: date) -> str:
     return f"{start_year}-{str(start_year + 1)[-2:]}"
 
 
-async def allocate_doc_number(
-    session: AsyncSession,
-    *,
-    doc_type: str,
-    txn_date: date,
-    prefix: str,
-) -> str:
-    """Allocate and return the next document number for (doc_type, fiscal
-    year of txn_date), e.g. 'KJ/2026-27/0041'. Does not commit.
-    """
-    fy = fiscal_year_for(txn_date)
-
+async def _lock_sequence(session: AsyncSession, *, doc_type: str, fy: str, prefix: str) -> int:
+    """Return last_number for (doc_type, fy), row-locked, creating it at 0
+    if it doesn't exist yet."""
     locked = await session.execute(
         select(DocSequence.last_number)
         .where(DocSequence.doc_type == doc_type, DocSequence.fy == fy)
@@ -67,6 +64,25 @@ async def allocate_doc_number(
             .with_for_update()
         )
         last_number = locked.scalar_one()
+    return last_number
+
+
+async def allocate_doc_number(
+    session: AsyncSession,
+    *,
+    doc_type: str,
+    txn_date: date,
+    prefix: str,
+) -> str:
+    """Allocate and return the next document number for (doc_type, fiscal
+    year of txn_date), e.g. 'KJ/2026-27/0041'. Continuous doc types (sales)
+    ignore the date and prefix and return the bare running number, '867'.
+    Does not commit.
+    """
+    continuous = doc_type in CONTINUOUS_DOC_TYPES
+    fy = CONTINUOUS_FY if continuous else fiscal_year_for(txn_date)
+
+    last_number = await _lock_sequence(session, doc_type=doc_type, fy=fy, prefix="" if continuous else prefix)
 
     next_number = last_number + 1
     await session.execute(
@@ -76,4 +92,32 @@ async def allocate_doc_number(
     )
     await session.flush()
 
-    return f"{prefix}{fy}/{next_number:04d}"
+    return str(next_number) if continuous else f"{prefix}{fy}/{next_number:04d}"
+
+
+async def get_continuous_next(session: AsyncSession, *, doc_type: str) -> int:
+    """The number the next document of this continuous type will get."""
+    result = await session.execute(
+        select(DocSequence.last_number).where(DocSequence.doc_type == doc_type, DocSequence.fy == CONTINUOUS_FY)
+    )
+    return (result.scalar_one_or_none() or 0) + 1
+
+
+async def lock_continuous_sequence(session: AsyncSession, *, doc_type: str) -> None:
+    """Take the same row lock allocate_doc_number takes. Held until the
+    caller's transaction ends, so a check made after this can't race a
+    document being numbered."""
+    await _lock_sequence(session, doc_type=doc_type, fy=CONTINUOUS_FY, prefix="")
+
+
+async def set_continuous_start(session: AsyncSession, *, doc_type: str, start_number: int) -> None:
+    """Make `start_number` the next number issued. Call
+    lock_continuous_sequence and check no documents exist first. Does not
+    commit.
+    """
+    await session.execute(
+        update(DocSequence)
+        .where(DocSequence.doc_type == doc_type, DocSequence.fy == CONTINUOUS_FY)
+        .values(last_number=start_number - 1)
+    )
+    await session.flush()

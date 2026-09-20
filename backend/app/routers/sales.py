@@ -12,7 +12,8 @@ from datetime import date, datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, select
+from pydantic import BaseModel, Field
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -21,7 +22,12 @@ from app.db import get_session
 from app.models import DocStatus, LedgerTxnType, Party, Product, Sale, SaleLine, User, UserRole
 from app.schemas.sale import SaleCancelRequest, SaleLineIn, SaleOut, SaleWrite
 from app.services import ledger
-from app.services.doc_numbering import allocate_doc_number
+from app.services.doc_numbering import (
+    allocate_doc_number,
+    get_continuous_next,
+    lock_continuous_sequence,
+    set_continuous_start,
+)
 
 router = APIRouter(prefix="/sales", tags=["sales"], dependencies=[Depends(get_current_user)])
 
@@ -80,7 +86,7 @@ async def create_sale(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "discount must be between 0 and the gross amount")
     net_amount = gross_amount - body.discount
 
-    invoice_no = await allocate_doc_number(session, doc_type="sale", txn_date=body.invoice_date, prefix="KJ/")
+    invoice_no = await allocate_doc_number(session, doc_type="sale", txn_date=body.invoice_date, prefix="")
 
     sale = Sale(
         invoice_no=invoice_no,
@@ -113,6 +119,44 @@ async def create_sale(
 
     await session.commit()
     return await _load_sale(session, sale.id)
+
+
+class SalesNumbering(BaseModel):
+    next_number: int
+    locked: bool  # True once any sale exists: the starting number can no longer change
+
+
+class SalesNumberingSet(BaseModel):
+    start_number: int = Field(ge=1)
+
+
+async def _numbering_state(session: AsyncSession) -> SalesNumbering:
+    sale_count = (await session.execute(select(func.count(Sale.id)))).scalar_one()
+    return SalesNumbering(next_number=await get_continuous_next(session, doc_type="sale"), locked=sale_count > 0)
+
+
+@router.get("/numbering", response_model=SalesNumbering)
+async def get_sales_numbering(session: AsyncSession = Depends(get_session)) -> SalesNumbering:
+    return await _numbering_state(session)
+
+
+@router.put("/numbering", response_model=SalesNumbering, dependencies=[Depends(require_role(UserRole.admin))])
+async def set_sales_numbering(body: SalesNumberingSet, session: AsyncSession = Depends(get_session)) -> SalesNumbering:
+    """One-time: the first invoice issued will be start_number. Refused once
+    any sale exists (cancelled ones included) — changing it then could
+    reissue a number that's already on a real invoice."""
+    # Lock first, count second: a sale being created right now holds this
+    # same lock until it commits, so the count below can't miss it.
+    await lock_continuous_sequence(session, doc_type="sale")
+    sale_count = (await session.execute(select(func.count(Sale.id)))).scalar_one()
+    if sale_count > 0:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "The sales starting number can't be changed once any sale exists.",
+        )
+    await set_continuous_start(session, doc_type="sale", start_number=body.start_number)
+    await session.commit()
+    return await _numbering_state(session)
 
 
 @router.get("", response_model=list[SaleOut])

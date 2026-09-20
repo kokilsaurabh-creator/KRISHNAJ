@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
 import AppShell from "./components/AppShell";
 import BanksScreen from "./screens/BanksScreen";
+import SalesNumberingScreen from "./screens/SalesNumberingScreen";
 import HomeScreen from "./screens/HomeScreen";
 import LoginScreen from "./screens/LoginScreen";
 import PartiesScreen from "./screens/PartiesScreen";
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="parties" element={<PartiesScreen />} />
         <Route path="products" element={<ProductsScreen />} />
         <Route path="banks" element={<BanksScreen />} />
+        <Route path="settings/sales-numbering" element={<SalesNumberingScreen />} />
         <Route path="sales" element={<SalesListScreen />} />
         <Route path="sales/new" element={<SalesEntryScreen />} />
         <Route path="sales/:id" element={<SaleDetailScreen />} />

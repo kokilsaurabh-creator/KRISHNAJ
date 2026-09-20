@@ -21,31 +21,31 @@ def test_fiscal_year_spans_april_to_march():
 
 @pytest.mark.asyncio
 async def test_sequential_allocation_increments_and_formats(session):
-    first = await allocate_doc_number(session, doc_type="sale", txn_date=date(2026, 4, 5), prefix="KJ/")
-    second = await allocate_doc_number(session, doc_type="sale", txn_date=date(2026, 5, 1), prefix="KJ/")
+    first = await allocate_doc_number(session, doc_type="receipt", txn_date=date(2026, 4, 5), prefix="RCP/")
+    second = await allocate_doc_number(session, doc_type="receipt", txn_date=date(2026, 5, 1), prefix="RCP/")
     await session.commit()
 
-    assert first == "KJ/2026-27/0001"
-    assert second == "KJ/2026-27/0002"
+    assert first == "RCP/2026-27/0001"
+    assert second == "RCP/2026-27/0002"
 
 
 @pytest.mark.asyncio
 async def test_different_fiscal_years_get_independent_sequences(session):
-    this_fy = await allocate_doc_number(session, doc_type="sale", txn_date=date(2026, 4, 5), prefix="KJ/")
-    next_fy = await allocate_doc_number(session, doc_type="sale", txn_date=date(2027, 4, 5), prefix="KJ/")
+    this_fy = await allocate_doc_number(session, doc_type="receipt", txn_date=date(2026, 4, 5), prefix="RCP/")
+    next_fy = await allocate_doc_number(session, doc_type="receipt", txn_date=date(2027, 4, 5), prefix="RCP/")
     await session.commit()
 
-    assert this_fy == "KJ/2026-27/0001"
-    assert next_fy == "KJ/2027-28/0001"
+    assert this_fy == "RCP/2026-27/0001"
+    assert next_fy == "RCP/2027-28/0001"
 
 
 @pytest.mark.asyncio
 async def test_different_doc_types_get_independent_sequences(session):
-    sale_no = await allocate_doc_number(session, doc_type="sale", txn_date=date(2026, 4, 5), prefix="KJ/")
+    sale_no = await allocate_doc_number(session, doc_type="payment", txn_date=date(2026, 4, 5), prefix="PMT/")
     receipt_no = await allocate_doc_number(session, doc_type="receipt", txn_date=date(2026, 4, 5), prefix="RCP/")
     await session.commit()
 
-    assert sale_no == "KJ/2026-27/0001"
+    assert sale_no == "PMT/2026-27/0001"
     assert receipt_no == "RCP/2026-27/0001"
 
 

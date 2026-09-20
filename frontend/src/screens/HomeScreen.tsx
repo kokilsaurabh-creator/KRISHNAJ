@@ -2,6 +2,7 @@ import {
   IconBuildingBank,
   IconCash,
   IconDiamond,
+  IconHash,
   IconLogout,
   IconReceipt,
   IconTruckDelivery,
@@ -208,6 +209,12 @@ export default function HomeScreen() {
           <IconBuildingBank size={18} stroke={1.75} />
           Banks
         </Link>
+        {user?.role === "admin" && (
+          <Link to="/settings/sales-numbering" className="btn-secondary col-span-3 gap-2">
+            <IconHash size={18} stroke={1.75} />
+            Sales starting number
+          </Link>
+        )}
       </div>
     </div>
   );
