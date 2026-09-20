@@ -188,6 +188,16 @@ export type BankLedger = {
   closing: string;
 };
 
+export type CashLedger = {
+  from_date: string;
+  to_date: string;
+  opening: string;
+  rows: BankLedgerRow[];
+  total_debit: string;
+  total_credit: string;
+  closing: string;
+};
+
 export type Product = {
   id: number;
   code: string;

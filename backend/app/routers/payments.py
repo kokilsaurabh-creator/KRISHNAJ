@@ -42,7 +42,7 @@ from app.core.deps import get_current_user, require_role
 from app.db import get_session
 from app.models import Bank, DocStatus, LedgerTxnType, Party, PartyType, Payment, PaymentDirection, User, UserRole
 from app.schemas.payment import PaymentCancelRequest, PaymentOut, PaymentWrite
-from app.services import bank_ledger, ledger
+from app.services import bank_ledger, cash_ledger, ledger
 from app.services.doc_numbering import allocate_doc_number
 
 router = APIRouter(prefix="/payments", tags=["payments"], dependencies=[Depends(get_current_user)])
@@ -177,6 +177,35 @@ async def _post_bank_leg(
     )
 
 
+async def _post_cash_leg(
+    session: AsyncSession,
+    *,
+    payment_id: int,
+    payment_date: date,
+    direction: PaymentDirection,
+    amount: Decimal,
+    voucher_no: str,
+    narration: str | None,
+) -> None:
+    """Post (or replace) the cash ledger leg. Same sign as the bank leg
+    (receipt = cash in = debit), so it deliberately reuses
+    _bank_txn_type_and_sign rather than the party leg's pair. Only the
+    real amount received/paid goes here — never the knockoff.
+    """
+    txn_type, debit, credit = _bank_txn_type_and_sign(direction, amount)
+    await cash_ledger.repost_for_source(
+        session,
+        source_table="payments",
+        source_id=payment_id,
+        txn_date=payment_date,
+        txn_type=txn_type,
+        doc_no=voucher_no,
+        debit=debit,
+        credit=credit,
+        narration=narration,
+    )
+
+
 async def _post_transfer_leg(
     session: AsyncSession,
     *,
@@ -299,6 +328,19 @@ async def create_payment(
             payment_date=body.payment_date,
             voucher_no=voucher_no,
             reason=body.knockoff_reason,
+        )
+
+    # Cash leg: cash mode with no vendor transfer (a transfer is a hand-off,
+    # never a cash-book entry — same rule as the bank leg).
+    if body.is_cash and vendor is None:
+        await _post_cash_leg(
+            session,
+            payment_id=payment.id,
+            payment_date=body.payment_date,
+            direction=body.direction,
+            amount=body.amount,
+            voucher_no=voucher_no,
+            narration=body.narration,
         )
 
     # Bank leg, only if a bank was selected (mutually exclusive with the
@@ -447,6 +489,19 @@ async def update_payment(
     else:
         await ledger.remove_for_source(session, source_table=KNOCKOFF_SOURCE_TABLE, source_id=payment.id)
 
+    if body.is_cash and vendor is None:
+        await _post_cash_leg(
+            session,
+            payment_id=payment.id,
+            payment_date=body.payment_date,
+            direction=body.direction,
+            amount=body.amount,
+            voucher_no=payment.voucher_no,
+            narration=body.narration,
+        )
+    else:
+        await cash_ledger.remove_for_source(session, source_table="payments", source_id=payment.id)
+
     # Same idea for the bank leg — reposted if a bank is (still, or newly)
     # selected, removed if it was cleared.
     if bank is not None:
@@ -497,6 +552,7 @@ async def cancel_payment(
     await ledger.remove_for_source(session, source_table=TRANSFER_SOURCE_TABLE, source_id=payment.id)
     await ledger.remove_for_source(session, source_table=KNOCKOFF_SOURCE_TABLE, source_id=payment.id)
     await bank_ledger.remove_for_source(session, source_table="payments", source_id=payment.id)
+    await cash_ledger.remove_for_source(session, source_table="payments", source_id=payment.id)
 
     await session.commit()
     await session.refresh(payment)

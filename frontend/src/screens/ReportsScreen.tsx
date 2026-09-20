@@ -1,13 +1,15 @@
 import { useState } from "react";
 
 import BankLedgerScreen from "./BankLedgerScreen";
+import CashLedgerScreen from "./CashLedgerScreen";
 import LedgerScreen from "./LedgerScreen";
 
-type ReportTab = "party" | "bank";
+type ReportTab = "party" | "bank" | "cash";
 
 const TABS: { value: ReportTab; label: string }[] = [
   { value: "party", label: "Party Ledger" },
   { value: "bank", label: "Bank Ledger" },
+  { value: "cash", label: "Cash Ledger" },
 ];
 
 /** Thin wrapper: LedgerScreen (Party Ledger) is unchanged, just mounted
@@ -41,7 +43,7 @@ export default function ReportsScreen() {
         })}
       </div>
 
-      {tab === "party" ? <LedgerScreen /> : <BankLedgerScreen />}
+      {tab === "party" ? <LedgerScreen /> : tab === "bank" ? <BankLedgerScreen /> : <CashLedgerScreen />}
     </div>
   );
 }

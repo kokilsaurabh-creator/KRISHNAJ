@@ -8,11 +8,11 @@ import pytest
 from sqlalchemy import select
 
 from app.models import LedgerEntry
-from app.services import bank_ledger, ledger
+from app.services import bank_ledger, cash_ledger, ledger
 from tests.conftest import auth_headers
 
 
-def _payment_body(party_id: int, *, direction="in", amount="1000.00", mode="Cash", date_="2026-04-05", bank_id=None):
+def _payment_body(party_id: int, *, direction="in", amount="1000.00", mode="Bank", date_="2026-04-05", bank_id=None):
     body = {
         "party_id": party_id,
         "payment_date": date_,
@@ -271,6 +271,49 @@ async def test_knockoff_settles_balance_to_zero_and_cancel_restores_it(session, 
     restored = await ledger.get_ledger(session, party.id, date(2026, 4, 2), date(2026, 4, 30))
     assert restored.rows == []
     assert restored.closing == Decimal("1760.00")
+
+
+@pytest.mark.asyncio
+async def test_cash_payment_posts_to_cash_ledger_only_and_cancel_reverses_it(
+    session, client, owner_user, admin_user, party, bank
+):
+    headers = auth_headers(owner_user)
+    await client.put(
+        "/cash-ledger/opening-balance",
+        json={"as_of_date": "2026-04-01", "amount": "1000.00"},
+        headers=auth_headers(admin_user),
+    )
+    day = date(2026, 4, 5)
+
+    async def cash_closing() -> Decimal:
+        return (await cash_ledger.get_cash_ledger(session, date(2026, 4, 1), day)).closing
+
+    async def bank_closing() -> Decimal:
+        return (await bank_ledger.get_bank_ledger(session, bank.id, date(2026, 4, 1), day)).closing
+
+    # Cash receipt of 500: cash up by 500, bank untouched, no bank needed.
+    cash_body = _payment_body(party.id, amount="500.00", mode="Cash")
+    receipt = await client.post("/payments", json=cash_body, headers=headers)
+    assert receipt.status_code == 201
+    assert await cash_closing() == Decimal("1500.00")
+    assert await bank_closing() == Decimal("0.00")
+
+    # A cash payment can't also name a bank.
+    both = await client.post("/payments", json={**cash_body, "bank_id": bank.id}, headers=headers)
+    assert both.status_code == 422
+
+    # A bank-mode payment posts to the bank only: cash is unchanged.
+    by_bank = await client.post(
+        "/payments", json=_payment_body(party.id, amount="300.00", mode="Bank", bank_id=bank.id), headers=headers
+    )
+    assert by_bank.status_code == 201
+    assert await cash_closing() == Decimal("1500.00")
+    assert await bank_closing() == Decimal("300.00")
+
+    # Cancelling the cash receipt returns cash to its prior value.
+    cancel = await client.post(f"/payments/{receipt.json()['id']}/cancel", json={"reason": "test"}, headers=headers)
+    assert cancel.status_code == 200
+    assert await cash_closing() == Decimal("1000.00")
 
 
 @pytest.mark.asyncio

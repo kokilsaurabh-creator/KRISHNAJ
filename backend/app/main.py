@@ -7,6 +7,7 @@ from app.routers import (
     auth,
     bank_ledger,
     banks,
+    cash_ledger,
     dashboard,
     ledger,
     parties,
@@ -61,6 +62,7 @@ app.include_router(dashboard.router)
 app.include_router(attachments.router)
 app.include_router(banks.router)
 app.include_router(bank_ledger.router)
+app.include_router(cash_ledger.router)
 
 
 @app.get("/health")

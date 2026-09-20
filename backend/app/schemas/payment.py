@@ -35,6 +35,11 @@ class PaymentWrite(BaseModel):
     knockoff_amount: Decimal | None = Field(default=None, ge=0)
     knockoff_reason: str | None = None
 
+    @property
+    def is_cash(self) -> bool:
+        """Cash mode posts to the cash ledger instead of a bank."""
+        return self.mode.strip().casefold() == "cash"
+
     @model_validator(mode="after")
     def _validate_transfer(self) -> Self:
         has_party = self.transfer_to_party_id is not None
@@ -57,8 +62,10 @@ class PaymentWrite(BaseModel):
 
         if has_party and self.bank_id is not None:
             raise ValueError("bank cannot be set when transferring part of this payment to a vendor")
-        if not has_party and self.bank_id is None:
-            raise ValueError("bank is required unless transferring part of this payment to a vendor")
+        if self.is_cash and self.bank_id is not None:
+            raise ValueError("bank cannot be set for a cash payment")
+        if not has_party and not self.is_cash and self.bank_id is None:
+            raise ValueError("bank is required unless the payment is cash or transfers part of it to a vendor")
         return self
 
 

@@ -56,7 +56,8 @@ export default function PaymentEntryScreen() {
   const transferValid = !transferActive || (transferParty !== null && transferAmountValid);
   // Bank is mandatory for a plain payment and not applicable to a
   // transfer — mirrors PaymentWrite's own validator exactly.
-  const bankValid = transferActive || bankId !== null;
+  const isCash = mode.trim().toLowerCase() === "cash";
+  const bankValid = transferActive || isCash || bankId !== null;
   const knockoffValid =
     knockoffAmount.trim() === "" ||
     (isValidDecimal(knockoffAmount, 2) && compareAmounts(knockoffAmount, "0") >= 0);
@@ -111,7 +112,9 @@ export default function PaymentEntryScreen() {
           : {}),
         ...(transferActive && transferParty
           ? { transfer_to_party_id: transferParty.id, transfer_amount: transferAmount }
-          : { bank_id: bankId }),
+          : isCash
+            ? {}
+            : { bank_id: bankId }),
       });
       setSaved(payment);
       void queryClient.invalidateQueries({ queryKey: ["ledger"] });
@@ -299,7 +302,7 @@ export default function PaymentEntryScreen() {
           </div>
         )}
 
-        {!transferActive && (
+        {!transferActive && !isCash && (
           <div>
             <label htmlFor="payment-bank" className="mb-1.5 block text-sm font-medium text-neutral-700">
               Bank

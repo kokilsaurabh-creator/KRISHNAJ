@@ -383,6 +383,53 @@ class BankLedgerEntry(Base):
     )
 
 
+class CashAccount(Base):
+    """The one cash account. Singleton: id is pinned to 1 by a CHECK, so a
+    second row can't exist. opening_balance is the value the admin entered;
+    the balance itself is always computed from cash_ledger_entries."""
+
+    __tablename__ = "cash_account"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    opening_balance: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, server_default="0")
+    opening_balance_date: Mapped[date | None] = mapped_column(Date)
+    created_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (CheckConstraint("id = 1", name="ck_cash_account_singleton"),)
+
+
+class CashLedgerEntry(Base):
+    """Same shape and sign convention as BankLedgerEntry, minus bank_id
+    (there is only one cash account): cash in = debit, cash out = credit."""
+
+    __tablename__ = "cash_ledger_entries"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    txn_date: Mapped[date] = mapped_column(Date, nullable=False)
+    txn_type: Mapped[LedgerTxnType] = mapped_column(_pg_enum(LedgerTxnType, "ledger_txn_type"), nullable=False)
+    source_table: Mapped[str | None] = mapped_column(Text)
+    source_id: Mapped[int | None] = mapped_column(BigInteger)
+    doc_no: Mapped[str | None] = mapped_column(Text)
+    debit: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, server_default="0")
+    credit: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, server_default="0")
+    narration: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("debit >= 0 AND credit >= 0", name="ck_cash_ledger_entries_nonnegative"),
+        CheckConstraint("NOT (debit > 0 AND credit > 0)", name="ck_cash_ledger_entries_one_sided"),
+        Index("idx_cash_ledger_date", "txn_date", "id"),
+        Index(
+            "idx_cash_ledger_source",
+            "source_table",
+            "source_id",
+            unique=True,
+            postgresql_where=text("source_table IS NOT NULL"),
+        ),
+    )
+
+
 # ============ DOCUMENT NUMBERING ============
 
 

@@ -4,6 +4,8 @@ from app.models.models import (
     Attachment,
     Bank,
     BankLedgerEntry,
+    CashAccount,
+    CashLedgerEntry,
     DocSequence,
     LedgerEntry,
     Party,
@@ -35,5 +37,7 @@ __all__ = [
     "Payment",
     "LedgerEntry",
     "BankLedgerEntry",
+    "CashAccount",
+    "CashLedgerEntry",
     "DocSequence",
 ]
