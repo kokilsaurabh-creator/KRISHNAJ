@@ -102,14 +102,20 @@ export default function LedgerScreen() {
 
   const validRange = range.from !== "" && range.to !== "" && range.from <= range.to;
 
-  const { data, isPending, isError, error } = useQuery({
-    queryKey: ["ledger", party?.id, range.from, range.to],
-    queryFn: () =>
-      api.get<Ledger>(`/ledger/${party!.id}?from=${range.from}&to=${range.to}`),
-    enabled: party !== null && validRange,
+  // Filters above are only a draft; nothing is fetched until "Go". Each tap
+  // gets a new nonce (=> new query key) and gcTime 0, so every run hits the
+  // backend fresh and never shows a cached result.
+  const [run, setRun] = useState<{ party: Party; range: DateRange; nonce: number } | null>(null);
+
+  const { data, isPending, isFetching, isError, error } = useQuery({
+    queryKey: ["ledger", run?.party.id, run?.range.from, run?.range.to, run?.nonce],
+    queryFn: () => api.get<Ledger>(`/ledger/${run!.party.id}?from=${run!.range.from}&to=${run!.range.to}`),
+    enabled: run !== null,
+    gcTime: 0,
+    staleTime: 0,
   });
 
-  const detailPathForRow = useDocumentRouter(party, range, validRange);
+  const detailPathForRow = useDocumentRouter(run?.party ?? null, run?.range ?? range, run !== null);
 
   return (
     <div className="space-y-5">
@@ -136,6 +142,15 @@ export default function LedgerScreen() {
           />
         </div>
 
+        <button
+          type="button"
+          className="btn-primary w-full sm:w-auto"
+          disabled={party === null || !validRange || isFetching}
+          onClick={() => party && setRun({ party, range, nonce: Date.now() })}
+        >
+          {isFetching ? "Loading…" : "Go"}
+        </button>
+
         {!validRange && (
           <p role="alert" className="text-sm text-danger">
             The “from” date must be on or before the “to” date.
@@ -143,13 +158,13 @@ export default function LedgerScreen() {
         )}
       </section>
 
-      {party === null && (
+      {run === null && (
         <p className="rounded-xl border border-dashed border-neutral-300 px-4 py-8 text-center text-sm text-neutral-500">
-          Search for a party above to view its ledger.
+          Pick a party and period above, then tap Go.
         </p>
       )}
 
-      {party !== null && isPending && validRange && (
+      {run !== null && isPending && (
         <p className="px-4 py-8 text-center text-sm text-neutral-500">Loading ledger…</p>
       )}
 

@@ -51,10 +51,16 @@ export default function BankLedgerScreen() {
 
   const validRange = range.from !== "" && range.to !== "" && range.from <= range.to;
 
-  const { data, isPending, isError, error } = useQuery({
-    queryKey: ["bank-ledger", bankId, range.from, range.to],
-    queryFn: () => api.get<BankLedger>(`/bank-ledger/${bankId}?from=${range.from}&to=${range.to}`),
-    enabled: bankId !== null && validRange,
+  // Filters are only a draft until "Go"; each tap uses a new nonce and
+  // gcTime 0 so it always fetches fresh from the backend.
+  const [run, setRun] = useState<{ bankId: number; range: DateRange; nonce: number } | null>(null);
+
+  const { data, isPending, isFetching, isError, error } = useQuery({
+    queryKey: ["bank-ledger", run?.bankId, run?.range.from, run?.range.to, run?.nonce],
+    queryFn: () => api.get<BankLedger>(`/bank-ledger/${run!.bankId}?from=${run!.range.from}&to=${run!.range.to}`),
+    enabled: run !== null,
+    gcTime: 0,
+    staleTime: 0,
   });
 
   return (
@@ -97,6 +103,15 @@ export default function BankLedgerScreen() {
           />
         </div>
 
+        <button
+          type="button"
+          className="btn-primary w-full sm:w-auto"
+          disabled={bankId === null || !validRange || isFetching}
+          onClick={() => bankId !== null && setRun({ bankId, range, nonce: Date.now() })}
+        >
+          {isFetching ? "Loading…" : "Go"}
+        </button>
+
         {!validRange && (
           <p role="alert" className="text-sm text-danger">
             The "from" date must be on or before the "to" date.
@@ -104,13 +119,13 @@ export default function BankLedgerScreen() {
         )}
       </section>
 
-      {bankId === null && (
+      {run === null && (
         <p className="rounded-xl border border-dashed border-neutral-300 px-4 py-8 text-center text-sm text-neutral-500">
-          Select a bank above to view its ledger.
+          Pick a bank and period above, then tap Go.
         </p>
       )}
 
-      {bankId !== null && isPending && validRange && (
+      {run !== null && isPending && (
         <p className="px-4 py-8 text-center text-sm text-neutral-500">Loading ledger…</p>
       )}
 
