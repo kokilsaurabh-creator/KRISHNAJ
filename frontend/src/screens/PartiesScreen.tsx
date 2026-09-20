@@ -69,7 +69,9 @@ function toForm(party: Party): FormState {
 
 export default function PartiesScreen() {
   const { can, user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  // Owners may set an opening balance too; the API refuses them once the
+  // party has transactions (admin only after that).
+  const canSetOpening = user?.role === "admin" || user?.role === "owner";
   const canEdit = can("edit_masters");
   const queryClient = useQueryClient();
 
@@ -102,7 +104,7 @@ export default function PartiesScreen() {
       if (!row) return null;
       return { amount: (Number(row.debit) - Number(row.credit)).toFixed(2), date: row.date };
     },
-    enabled: isAdmin && editingId !== null,
+    enabled: canSetOpening && editingId !== null,
   });
   const openingValid = form.opening_balance.trim() === "" || isValidDecimal(form.opening_balance, 2);
 
@@ -151,7 +153,7 @@ export default function PartiesScreen() {
       }
       // Blank = leave any existing opening balance alone; the endpoint
       // replaces rather than adds, so a zero here would wipe it.
-      if (isAdmin && form.opening_balance.trim() !== "") {
+      if (canSetOpening && form.opening_balance.trim() !== "") {
         await api.postJson(`/parties/${partyId}/opening-balance`, {
           as_of_date: form.opening_balance_date,
           amount: form.opening_balance.trim(),
@@ -305,7 +307,7 @@ export default function PartiesScreen() {
             />
           </div>
 
-          {isAdmin && (
+          {canSetOpening && (
             <div className="space-y-3 rounded-lg border border-neutral-200 p-3">
               <p className="text-sm font-medium text-neutral-700">Opening balance</p>
               {!isNew && currentOpening && (

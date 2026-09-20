@@ -1,12 +1,12 @@
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user, require_role
 from app.db import get_session
-from app.models import Party, PartyType, UserRole
+from app.models import LedgerEntry, LedgerTxnType, Party, PartyType, User, UserRole
 from app.schemas.party import OpeningBalanceRequest, OpeningBalanceResponse, PartyCreate, PartyOut, PartyUpdate
 from app.services import ledger
 
@@ -75,11 +75,31 @@ async def update_party(party_id: int, body: PartyUpdate, session: AsyncSession =
     dependencies=[Depends(require_role(UserRole.admin, UserRole.owner))],
 )
 async def set_opening_balance(
-    party_id: int, body: OpeningBalanceRequest, session: AsyncSession = Depends(get_session)
+    party_id: int,
+    body: OpeningBalanceRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ) -> OpeningBalanceResponse:
     party = await session.get(Party, party_id)
     if party is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Party not found")
+
+    # Setup is open to owners, but once the party has any real transaction,
+    # rewriting the opening balance would silently change its whole running
+    # balance — from then on only an admin may do it.
+    if current_user.role != UserRole.admin:
+        transactions = (
+            await session.execute(
+                select(func.count(LedgerEntry.id)).where(
+                    LedgerEntry.party_id == party_id, LedgerEntry.txn_type != LedgerTxnType.opening
+                )
+            )
+        ).scalar_one()
+        if transactions > 0:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "This party already has transactions, so only an admin can change its opening balance.",
+            )
 
     entry = await ledger.set_opening_balance(
         session,

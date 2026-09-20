@@ -116,3 +116,33 @@ async def test_staff_gets_403_updating_a_party(client, staff_user, party):
         headers=auth_headers(staff_user),
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_owner_can_set_opening_balance_until_party_has_transactions(
+    client, owner_user, admin_user, party, product
+):
+    owner, admin = auth_headers(owner_user), auth_headers(admin_user)
+    url = f"/parties/{party.id}/opening-balance"
+
+    first = await client.post(url, json={"as_of_date": "2026-04-01", "amount": "1000.00"}, headers=owner)
+    assert first.status_code == 200
+    again = await client.post(url, json={"as_of_date": "2026-04-01", "amount": "1200.00"}, headers=owner)
+    assert again.status_code == 200  # still no real transactions: re-saving is fine
+
+    sale = await client.post(
+        "/sales",
+        json={
+            "party_id": party.id,
+            "invoice_date": "2026-04-05",
+            "lines": [{"product_id": product.id, "quantity": "1", "rate": "100.00"}],
+            "discount": "0",
+        },
+        headers=owner,
+    )
+    assert sale.status_code == 201
+
+    blocked = await client.post(url, json={"as_of_date": "2026-04-01", "amount": "5000.00"}, headers=owner)
+    assert blocked.status_code == 403
+    allowed = await client.post(url, json={"as_of_date": "2026-04-01", "amount": "5000.00"}, headers=admin)
+    assert allowed.status_code == 200
