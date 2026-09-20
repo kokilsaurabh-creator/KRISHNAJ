@@ -27,6 +27,7 @@ export default function PurchaseListScreen() {
     enabled: validRange,
     // Shared shop: keep the list current when the app is reopened, refocused, or left open.
     staleTime: 0,
+    gcTime: 0, // dropped on leave, so returning shows a loading state then fresh data, never a cached list
     refetchOnWindowFocus: true,
     refetchInterval: 60_000,
   });

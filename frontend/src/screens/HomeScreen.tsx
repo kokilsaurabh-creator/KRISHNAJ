@@ -98,6 +98,11 @@ export default function HomeScreen() {
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard", "summary"],
     queryFn: () => api.get<DashboardSummary>("/dashboard/summary"),
+    // Always current: refetch on every visit and tab refocus, never show a cached summary.
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   const initial = user?.display_name?.trim().charAt(0).toUpperCase() || "?";
