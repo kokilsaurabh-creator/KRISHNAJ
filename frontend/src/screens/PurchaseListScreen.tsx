@@ -25,6 +25,10 @@ export default function PurchaseListScreen() {
       return api.get<Purchase[]>(`/purchases?${params.toString()}`);
     },
     enabled: validRange,
+    // Shared shop: keep the list current when the app is reopened, refocused, or left open.
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
   });
 
   const purchases = data ?? [];
