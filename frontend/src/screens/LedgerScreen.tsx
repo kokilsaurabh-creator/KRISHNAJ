@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import DateRangePicker from "../components/DateRangePicker";
 import PartyPicker from "../components/PartyPicker";
 import { api, TXN_TYPE_LABELS, type Ledger, type LedgerRow, type Party, type Payment, type Purchase, type Sale } from "../lib/api";
-import { formatDisplayDate, thisFY, type DateRange, type PresetKey } from "../lib/dates";
+import { formatDisplayDate, thisMonth, type DateRange, type PresetKey } from "../lib/dates";
 import { downloadLedgerPdf } from "../lib/ledgerPdf";
 import { absoluteAmount, balanceMarker, formatAmount, isNegative } from "../lib/money";
 
@@ -95,8 +95,8 @@ function useDocumentRouter(party: Party | null, range: DateRange, validRange: bo
 export default function LedgerScreen() {
   const navigate = useNavigate();
   const [party, setParty] = useState<Party | null>(null);
-  const [preset, setPreset] = useState<PresetKey>("this_fy");
-  const [range, setRange] = useState<DateRange>(() => thisFY());
+  const [preset, setPreset] = useState<PresetKey>("this_month");
+  const [range, setRange] = useState<DateRange>(() => thisMonth());
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 

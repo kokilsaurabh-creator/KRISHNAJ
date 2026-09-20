@@ -4,7 +4,7 @@ import { useState } from "react";
 import DateRangePicker from "../components/DateRangePicker";
 import { api, TXN_TYPE_LABELS, type Bank, type BankLedger, type BankLedgerRow } from "../lib/api";
 import { downloadBankLedgerPdf } from "../lib/bankLedgerPdf";
-import { formatDisplayDate, thisFY, type DateRange, type PresetKey } from "../lib/dates";
+import { formatDisplayDate, thisMonth, type DateRange, type PresetKey } from "../lib/dates";
 import { absoluteAmount, balanceMarker, formatAmount, isNegative } from "../lib/money";
 
 /** Same visual language as the party ledger's BalanceText/SummaryFigure —
@@ -39,8 +39,8 @@ function typeClass(type: BankLedgerRow["type"]): string {
 
 export default function BankLedgerScreen() {
   const [bankId, setBankId] = useState<number | null>(null);
-  const [preset, setPreset] = useState<PresetKey>("this_fy");
-  const [range, setRange] = useState<DateRange>(() => thisFY());
+  const [preset, setPreset] = useState<PresetKey>("this_month");
+  const [range, setRange] = useState<DateRange>(() => thisMonth());
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
