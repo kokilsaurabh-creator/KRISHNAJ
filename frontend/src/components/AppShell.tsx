@@ -3,6 +3,7 @@ import { NavLink, Outlet } from "react-router-dom";
 
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { AppBarLogo } from "./Logo";
+import IdleTimeout from "./IdleTimeout";
 import InstallPrompt from "./InstallPrompt";
 
 /** Daily-entry destinations only. Parties and Products are reached from
@@ -54,6 +55,7 @@ export default function AppShell() {
       </main>
 
       <InstallPrompt />
+      <IdleTimeout />
 
       {/* Bottom tab bar, mobile only */}
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-neutral-200 bg-white sm:hidden">
